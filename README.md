@@ -1,68 +1,101 @@
-# AI Calorie Estimator
+# AI Calorie Estimator App
 
-A modern web application that uses AI to estimate calorie content from food images or text descriptions.
+A modern web application that uses AI to estimate calories in food from images.
 
 ## Features
 
-- Upload food images for calorie estimation
-- Provide text descriptions for calorie estimation
-- Clean, modern UI built with Next.js and Tailwind CSS
-- AI-powered analysis (currently simulated, integration planned with Gemma models)
+- Capture or upload images of food
+- AI-powered calorie estimation using OpenAI's vision capabilities
+- Detailed breakdown of food items and their estimated calories
+- User-friendly interface built with Next.js and Tailwind CSS
 
 ## Tech Stack
 
-- **Frontend**: Next.js, TypeScript, Tailwind CSS
-- **Backend**: Next.js API Routes (planned)
-- **AI**: Gemma models (planned)
-- **Food Database**: TBD (USDA FoodData Central, Open Food Facts, etc.)
+- **Frontend**: Next.js, React, Tailwind CSS
+- **Backend**: Next.js API Routes
+- **AI**: OpenAI GPT-4 Vision
+- **Image Storage**: Cloudinary
+- **Form Validation**: Zod, React Hook Form
 
-## Getting Started
+## Setup
 
 ### Prerequisites
 
-- Node.js 18.x or higher
+- Node.js 16.x or later
 - npm or yarn
+- OpenAI API key
+- Cloudinary account
 
 ### Installation
 
 1. Clone the repository
-   ```bash
-   git clone https://github.com/yourusername/ai-calorie-estimator.git
-   cd ai-calorie-estimator
-   ```
+```bash
+git clone https://github.com/yourusername/ai-calorie-estimator-app.git
+cd ai-calorie-estimator-app
+```
 
 2. Install dependencies
-   ```bash
-   npm install
-   # or
-   yarn install
-   ```
-
-3. Run the development server
-   ```bash
-   npm run dev
-   # or
-   yarn dev
-   ```
-
-4. Open [http://localhost:3000](http://localhost:3000) in your browser
-
-## Project Structure
-
+```bash
+npm install
 ```
-src/
-├── app/                  # App router structure
-│   ├── api/              # API routes (planned)
-│   ├── globals.css       # Global styles
-│   ├── layout.tsx        # Root layout
-│   └── page.tsx          # Home page
-├── components/           # React components
-│   ├── CalorieEstimator.tsx  # Main component
-│   ├── ImageUploader.tsx     # Image upload interface
-│   ├── TextInput.tsx         # Text input interface
-│   └── CalorieResult.tsx     # Results display
+
+3. Create `.env.local` file in the root directory with the following variables:
+```
+OPENAI_API_KEY=your_openai_api_key
+CLOUDINARY_CLOUD_NAME=your_cloudinary_cloud_name
+CLOUDINARY_API_KEY=your_cloudinary_api_key
+CLOUDINARY_API_SECRET=your_cloudinary_api_secret
+NEXT_PUBLIC_API_URL=http://localhost:3000/api
+```
+
+4. Start the development server
+```bash
+npm run dev
+```
+
+5. Open [http://localhost:3000](http://localhost:3000) in your browser
+
+## API Endpoints
+
+### `POST /api/estimate-calories`
+
+Estimates calories in food from an image.
+
+**Request Body:**
+```json
+{
+  "image": "base64_encoded_image_data"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "calories": 650,
+    "foodItems": [
+      {
+        "name": "Hamburger",
+        "calories": 350,
+        "portion": "1 burger (150g)"
+      },
+      {
+        "name": "French Fries",
+        "calories": 300,
+        "portion": "Medium serving (100g)"
+      }
+    ],
+    "confidence": 0.85,
+    "imageUrl": "https://res.cloudinary.com/..."
+  }
+}
 ```
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
+ISC
+
+## Author
+
+Your Name 

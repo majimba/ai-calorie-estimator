@@ -1,133 +1,105 @@
 'use client';
 
 import { useState } from 'react';
-import ImageUploader from './ImageUploader';
-import TextInput from './TextInput';
-import CalorieResult from './CalorieResult';
+import { ImageUploader } from './ImageUploader';
+import { ResultsDisplay } from './ResultsDisplay';
+import { estimateCaloriesWithErrorHandling } from '@/lib/api';
+import { CalorieEstimation } from '@/lib/types';
+import { formatErrorMessage } from '@/lib/error';
+import { debug } from '@/lib/debug';
 
-type InputMethod = 'image' | 'text';
-type EstimationState = 'idle' | 'loading' | 'success' | 'error';
+export function CalorieEstimator() {
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<CalorieEstimation | null>(null);
 
-export default function CalorieEstimator() {
-  const [activeMethod, setActiveMethod] = useState<InputMethod>('image');
-  const [estimationState, setEstimationState] = useState<EstimationState>('idle');
-  const [calorieEstimate, setCalorieEstimate] = useState<number | null>(null);
-  const [inputDescription, setInputDescription] = useState<string>('');
-  const [errorMessage, setErrorMessage] = useState<string>('');
-
-  const handleImageSubmit = async (file: File) => {
+  const handleImageCapture = async (base64Image: string) => {
+    debug.log('Image captured in CalorieEstimator', { imageSize: base64Image.length });
+    setIsLoading(true);
+    setError(null);
+    
     try {
-      setEstimationState('loading');
-      // In a real application, you would upload the file to your backend API
-      // For now, we'll simulate the API call with a timeout
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      debug.log('Calling estimateCaloriesWithErrorHandling');
+      const { data, error } = await estimateCaloriesWithErrorHandling(base64Image);
       
-      // Simulate a response
-      const mockCalories = Math.floor(Math.random() * 500) + 200;
-      setCalorieEstimate(mockCalories);
-      setInputDescription(`Image of food`);
-      setEstimationState('success');
-    } catch (error) {
-      setEstimationState('error');
-      setErrorMessage('Failed to process image. Please try again.');
-    }
-  };
-
-  const handleTextSubmit = async (text: string) => {
-    try {
-      if (!text.trim()) {
-        setErrorMessage('Please enter a food description');
-        setEstimationState('error');
-        return;
+      if (error) {
+        debug.error('Error from estimateCaloriesWithErrorHandling', error);
+        setError(error);
+      } else if (data) {
+        debug.log('Received calorie estimation result', { 
+          calories: data.calories,
+          confidence: data.confidence,
+          foodItems: data.foodItems.length
+        });
+        setResult(data);
+      } else {
+        debug.error('No data or error returned', null);
+        setError('An unexpected error occurred. Please try again.');
       }
-      
-      setEstimationState('loading');
-      // In a real application, you would send the text to your backend API
-      // For now, we'll simulate the API call with a timeout
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Simulate a response
-      const mockCalories = Math.floor(Math.random() * 500) + 200;
-      setCalorieEstimate(mockCalories);
-      setInputDescription(text);
-      setEstimationState('success');
-    } catch (error) {
-      setEstimationState('error');
-      setErrorMessage('Failed to process text. Please try again.');
+    } catch (err) {
+      debug.error('Uncaught error in handleImageCapture', err);
+      setError(err instanceof Error ? err.message : 'An unexpected error occurred');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleReset = () => {
-    setEstimationState('idle');
-    setCalorieEstimate(null);
-    setInputDescription('');
-    setErrorMessage('');
+    debug.log('Resetting CalorieEstimator state');
+    setResult(null);
+    setError(null);
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md overflow-hidden">
-      <div className="p-6">
-        <h2 className="text-xl font-semibold mb-2">Estimate Meal Calories</h2>
-        <p className="text-gray-600 mb-6">Upload a photo of your meal or describe it in text to get an AI-powered calorie estimate</p>
-        
-        {/* Input Method Selection */}
-        <div className="flex space-x-2 mb-8">
-          <button
-            onClick={() => setActiveMethod('image')}
-            className={`flex-1 flex items-center justify-center py-3 px-4 rounded-lg ${
-              activeMethod === 'image'
-                ? 'bg-gray-100 border-2 border-gray-200'
-                : 'bg-white border border-gray-200 hover:bg-gray-50'
-            }`}
-          >
-            <span className="mr-2">📷</span>
-            <span className="font-medium">Image Upload</span>
-          </button>
-          <button
-            onClick={() => setActiveMethod('text')}
-            className={`flex-1 flex items-center justify-center py-3 px-4 rounded-lg ${
-              activeMethod === 'text'
-                ? 'bg-gray-100 border-2 border-gray-200'
-                : 'bg-white border border-gray-200 hover:bg-gray-50'
-            }`}
-          >
-            <span className="mr-2">📝</span>
-            <span className="font-medium">Text Description</span>
-          </button>
-        </div>
-
-        {/* Input Methods */}
-        {estimationState === 'idle' || estimationState === 'error' ? (
-          <>
-            {activeMethod === 'image' ? (
-              <ImageUploader onSubmit={handleImageSubmit} />
-            ) : (
-              <TextInput onSubmit={handleTextSubmit} />
-            )}
-            
-            {errorMessage && (
-              <div className="mt-4 p-2 bg-red-100 text-red-700 rounded text-sm">
-                {errorMessage}
-              </div>
-            )}
-            
-            <p className="text-gray-500 text-sm text-center mt-6">
-              For best results, ensure your meal is clearly visible and well-lit
-            </p>
-          </>
-        ) : estimationState === 'loading' ? (
-          <div className="flex flex-col items-center justify-center py-8">
-            <div className="w-12 h-12 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin"></div>
-            <p className="mt-4 text-gray-600">Analyzing your {activeMethod === 'image' ? 'image' : 'description'}...</p>
+    <div className="max-w-3xl mx-auto py-8 px-4">
+      <h1 className="text-3xl font-bold text-center mb-8">AI Calorie Estimator</h1>
+      
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 mb-6">
+          <div className="flex">
+            <svg className="h-5 w-5 text-red-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+              <p className="font-semibold">Error</p>
+              <p>{error}</p>
+            </div>
           </div>
-        ) : (
-          <CalorieResult
-            calories={calorieEstimate || 0}
-            description={inputDescription}
-            source={activeMethod}
-            onReset={handleReset}
-          />
-        )}
+        </div>
+      )}
+      
+      {!result ? (
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <p className="text-center text-gray-600 mb-6">
+            Take a photo of your food or upload an image to estimate its calorie content
+          </p>
+          <ImageUploader onImageCapture={handleImageCapture} isLoading={isLoading} />
+          
+          {isLoading && (
+            <div className="mt-6 text-center">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+              <p className="mt-2 text-gray-600">Analyzing your food...</p>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div>
+          <ResultsDisplay result={result} />
+          <div className="mt-6 flex justify-center">
+            <button
+              onClick={handleReset}
+              className="bg-blue-500 hover:bg-blue-600 text-white py-2 px-6 rounded-lg"
+            >
+              Analyze Another Photo
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-12 text-center text-gray-500 text-sm">
+        <p>
+          This app uses AI to estimate calories in food images. Results are approximate.
+        </p>
       </div>
     </div>
   );

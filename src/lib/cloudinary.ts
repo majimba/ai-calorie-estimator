@@ -1,6 +1,18 @@
 import { v2 as cloudinary } from 'cloudinary';
 import { config } from './config';
 
+// Define the upload response interface
+interface UploadApiResponse {
+  secure_url: string;
+  public_id: string;
+  format: string;
+  width: number;
+  height: number;
+  resource_type: string;
+  url: string;
+  [key: string]: any;
+}
+
 // Configure Cloudinary with URL or individual credentials
 if (process.env.CLOUDINARY_URL) {
   // If CLOUDINARY_URL is provided, use that (it contains all credentials)
@@ -43,7 +55,7 @@ export async function uploadImage(base64Image: string): Promise<string> {
     // Remove the data URL prefix if present
     const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
     
-    const result = await new Promise<cloudinary.UploadApiResponse>((resolve, reject) => {
+    const result = await new Promise<UploadApiResponse>((resolve, reject) => {
       cloudinary.uploader.upload(
         `data:image/jpeg;base64,${base64Data}`,
         {
@@ -54,7 +66,7 @@ export async function uploadImage(base64Image: string): Promise<string> {
           if (error) {
             reject(error);
           } else {
-            resolve(result as cloudinary.UploadApiResponse);
+            resolve(result as UploadApiResponse);
           }
         }
       );

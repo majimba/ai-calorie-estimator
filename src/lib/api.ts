@@ -263,4 +263,50 @@ export async function estimateCalories(base64Image: string): Promise<CalorieEsti
 export function estimateCaloriesWithErrorHandling(base64Image: string) {
   debug.log('Starting calorie estimation with error handling');
   return handleApiError(() => estimateCalories(base64Image));
+}
+
+/**
+ * Test function for iOS devices that uses a simplified endpoint
+ * @param base64Image Base64 encoded image data
+ * @returns Mock calorie estimation results
+ */
+export async function testIosEndpoint(base64Image: string): Promise<CalorieEstimation> {
+  console.log('Testing iOS-specific endpoint with direct API call');
+  
+  try {
+    // Add random cache buster to avoid caching issues on iOS
+    const cacheBuster = Date.now();
+    const response = await api.post<ApiResponse<CalorieEstimation>>(
+      `/ios-test?_=${cacheBuster}`,
+      { image: base64Image },
+      {
+        // Explicitly set headers for iOS
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-iOS-Client': 'true',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        },
+        timeout: 30000, // 30 seconds should be enough for the test endpoint
+        withCredentials: false // Explicitly disable for CORS
+      }
+    );
+    
+    if (!response.data.success || !response.data.data) {
+      throw new ApiError(response.data.error || 'iOS test endpoint returned error', response.status);
+    }
+    
+    return response.data.data;
+  } catch (error) {
+    console.error('Error in iOS test endpoint:', error);
+    
+    if (axios.isAxiosError(error)) {
+      const statusCode = error.response?.status || 500;
+      const errorMessage = error.response?.data?.error || error.message || 'Network error in test endpoint';
+      throw new ApiError(errorMessage, statusCode);
+    }
+    
+    throw error;
+  }
 } 

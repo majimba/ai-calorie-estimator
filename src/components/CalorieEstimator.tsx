@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { ImageUploader } from './ImageUploader';
 import { ResultsDisplay } from './ResultsDisplay';
-import { estimateCalories } from '@/lib/api';
+import { estimateCalories, testIosEndpoint } from '@/lib/api';
 import { CalorieEstimation } from '@/lib/types';
 import { formatErrorMessage } from '@/lib/error';
 import { debug } from '@/lib/debug';
@@ -63,9 +63,14 @@ export function CalorieEstimator() {
       const sizeMB = (imageData.length * 0.75) / (1024 * 1024);
       console.log(`Processing image, approx size: ${sizeMB.toFixed(2)} MB`);
       
-      // For iOS devices, show a small delay with a special message
+      // For iOS devices, use the test endpoint instead
       if (isIOSDevice) {
-        console.log('iOS device detected, showing enhanced loading message');
+        console.log('iOS device detected, using test endpoint');
+        const results = await testIosEndpoint(imageData);
+        console.log('Test endpoint returned:', results);
+        setResults(results);
+        setLoading(false);
+        return;
       }
       
       console.log('Starting estimation...');

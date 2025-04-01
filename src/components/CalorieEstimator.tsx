@@ -63,17 +63,8 @@ export function CalorieEstimator() {
       const sizeMB = (imageData.length * 0.75) / (1024 * 1024);
       console.log(`Processing image, approx size: ${sizeMB.toFixed(2)} MB`);
       
-      // For iOS devices, use the test endpoint instead
-      if (isIOSDevice) {
-        console.log('iOS device detected, using test endpoint');
-        const results = await testIosEndpoint(imageData);
-        console.log('Test endpoint returned:', results);
-        setResults(results);
-        setLoading(false);
-        return;
-      }
-      
-      console.log('Starting estimation...');
+      // Use the estimateCalories function which now uses the test endpoint internally
+      console.log('Starting calorie estimation with test endpoint');
       const results = await estimateCalories(imageData);
       console.log('Estimation complete:', results);
       
@@ -142,11 +133,7 @@ export function CalorieEstimator() {
           <div>
             <p className="font-medium">Analyzing your food...</p>
             <p className="text-sm mt-1">
-              {isIOSDevice ? 
-                'iOS devices may take longer. Please keep the browser open and connected to the internet.' : 
-                isMobileDevice ? 
-                  'This may take up to 40 seconds on mobile connections.' : 
-                  'This should only take a few seconds.'}
+              Using mock data for demonstration purposes.
             </p>
           </div>
         </div>
@@ -168,6 +155,10 @@ export function CalorieEstimator() {
       <div className="text-center text-gray-500 text-sm mt-8">
         <p>This app uses AI to estimate calories in food images.</p>
         <p>Results are approximate.</p>
+        
+        <p className="mt-2 text-xs text-blue-500 font-medium">
+          Currently running in demo mode with mock data
+        </p>
         
         {isMobileDevice && (
           <p className="mt-2 text-xs text-gray-400">

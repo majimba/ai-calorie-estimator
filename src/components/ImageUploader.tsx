@@ -4,6 +4,12 @@ import { useState, useRef } from 'react';
 import { compressImage, fileToBase64 } from '@/lib/image-utils';
 import { CameraIcon, XIcon, UploadIcon } from './icons';
 
+// Safe browser detection utilities for device detection
+const isBrowser = typeof window !== 'undefined';
+const getUserAgent = () => isBrowser ? navigator.userAgent : '';
+const isMobileDevice = isBrowser && /iPhone|iPad|iPod|Android/i.test(getUserAgent());
+const isIOSDevice = isBrowser && /iPhone|iPad|iPod/i.test(getUserAgent());
+
 interface ImageUploaderProps {
   onImageCapture: (base64Image: string) => void;
 }
@@ -20,21 +26,17 @@ export function ImageUploader({ onImageCapture }: ImageUploaderProps) {
       // Log file information for debugging
       console.log('File selected:', file.name, file.type, file.size);
       
-      // Check if this is likely a mobile device and specifically iOS
-      const isMobile = typeof window !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      const isIOS = typeof window !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent);
-      
       // For iOS devices, use even stronger compression 
       let quality = 0.8;
       let maxWidth = 800;
       
-      if (isIOS) {
+      if (isIOSDevice) {
         console.log('iOS device detected, using iOS-specific compression settings');
         maxWidth = 400; // Even smaller for iOS
         quality = file.size > 2000000 ? 0.4 : // Very large image - use very aggressive compression
                  file.size > 1000000 ? 0.5 : // Large image
                  file.size > 500000 ? 0.6 : 0.7; // Medium/small image
-      } else if (isMobile) {
+      } else if (isMobileDevice) {
         console.log('Mobile device detected, using stronger compression');
         maxWidth = 500; // Smaller image for mobile
         quality = file.size > 3000000 ? 0.5 : // Very large image
@@ -55,7 +57,7 @@ export function ImageUploader({ onImageCapture }: ImageUploaderProps) {
       console.log(`Estimated compressed size: ${sizeEstimate.toFixed(2)} MB`);
       
       // If this is iOS and still over 1.5MB, compress even more aggressively
-      if (isIOS && sizeEstimate > 1.5) {
+      if (isIOSDevice && sizeEstimate > 1.5) {
         console.log('iOS image still too large, applying extreme compression');
         try {
           const imgElement = new Image();
@@ -88,7 +90,7 @@ export function ImageUploader({ onImageCapture }: ImageUploaderProps) {
         }
       }
       // If still too large for mobile, compress again with lower quality
-      else if (isMobile && sizeEstimate > 1) {
+      else if (isMobileDevice && sizeEstimate > 1) {
         console.log('Image still large for mobile, compressing further');
         const imgElement = new Image();
         imgElement.src = compressedImage;

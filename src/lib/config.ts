@@ -9,9 +9,9 @@ export const config = {
     url: process.env.CLOUDINARY_URL || '',
   },
   api: {
-    // In production environments, always use a relative URL
-    baseUrl: typeof window !== 'undefined' && window.location.hostname !== 'localhost'
-      ? '/api'
-      : process.env.NEXT_PUBLIC_API_URL || '/api',
+    // Safely determine if we're in a browser and not on the server
+    baseUrl: typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL 
+      ? process.env.NEXT_PUBLIC_API_URL 
+      : '/api',
   },
 }; 

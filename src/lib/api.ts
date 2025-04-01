@@ -4,10 +4,16 @@ import { ApiResponse, CalorieEstimation, CalorieEstimationRequest } from './type
 import { ApiError, handleApiError } from './error';
 import { debug } from './debug';
 
+// Safe browser detection utilities
+const isBrowser = typeof window !== 'undefined';
+const getUserAgent = () => isBrowser ? navigator.userAgent : '';
+const isMobileDevice = isBrowser && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(getUserAgent());
+const isIOSDevice = isBrowser && /iPad|iPhone|iPod/.test(getUserAgent());
+
 // Get the API base URL
 const apiBaseUrl = (() => {
   // In browser environments
-  if (typeof window !== 'undefined') {
+  if (isBrowser) {
     // Check if we're in production or development
     const isProduction = window.location.hostname !== 'localhost';
     
@@ -19,30 +25,29 @@ const apiBaseUrl = (() => {
     
     // In development, use configured URL or fallback to relative path
     try {
-      const isAbsoluteUrl = config.api.baseUrl.startsWith('http');
+      const configBaseUrl = process.env.NEXT_PUBLIC_API_URL || '';
+      const isAbsoluteUrl = configBaseUrl.startsWith('http');
       
       if (isAbsoluteUrl) {
-        return config.api.baseUrl;
-      } else {
+        return configBaseUrl;
+      } else if (configBaseUrl) {
         // If it's a relative URL, use the current origin
         const origin = window.location.origin;
         console.log('Current origin:', origin);
-        const baseUrl = `${origin}${config.api.baseUrl}`;
+        const baseUrl = `${origin}${configBaseUrl}`;
         console.log('Constructed API base URL:', baseUrl);
         return baseUrl;
       }
     } catch (error) {
       console.error('Error constructing API URL:', error);
-      // Fallback to a simple relative URL that works in most browsers
-      return '/api';
     }
+    
+    // Fallback to a simple relative URL that works in most browsers
+    return '/api';
   }
   // In server environments, use the config value
-  return config.api.baseUrl;
+  return process.env.NEXT_PUBLIC_API_URL || '/api';
 })();
-
-// iOS detection
-const isIOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent);
 
 // Create API client with interceptors for debugging
 const api = axios.create({
@@ -52,14 +57,14 @@ const api = axios.create({
     // iOS Safari needs explicitly set Accept header
     'Accept': 'application/json, text/plain, */*',
     // Add iOS specific header to help with identification
-    ...(isIOS ? { 'X-iOS-Client': 'true' } : {})
+    ...(isIOSDevice ? { 'X-iOS-Client': 'true' } : {})
   },
   // Increase timeout for mobile networks - iOS devices may need even longer
-  timeout: isIOS ? 120000 : 90000, // 120 seconds for iOS, 90 for others
+  timeout: isIOSDevice ? 120000 : 90000, // 120 seconds for iOS, 90 for others
   // Explicitly handle CORS for iOS
   withCredentials: false,
   // Important for iOS: Don't cache requests
-  params: isIOS ? { _: Date.now() } : {}
+  params: isIOSDevice ? { _: Date.now() } : {}
 });
 
 // Add request interceptor for debugging
@@ -119,11 +124,10 @@ export async function estimateCalories(base64Image: string): Promise<CalorieEsti
   let attempt = 0;
   
   // Check for iOS specific browser
-  const isIOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent);
-  const isIOSChrome = isIOS && /CriOS/.test(navigator.userAgent);
-  const isSafari = typeof navigator !== 'undefined' && /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
+  const isIOSChrome = isIOSDevice && /CriOS/.test(getUserAgent());
+  const isSafari = isBrowser && /Safari/.test(getUserAgent()) && !/Chrome/.test(getUserAgent());
   
-  console.log(`Browser detection: iOS: ${isIOS}, iOS Chrome: ${isIOSChrome}, Safari: ${isSafari}`);
+  console.log(`Browser detection: iOS: ${isIOSDevice}, iOS Chrome: ${isIOSChrome}, Safari: ${isSafari}`);
   
   while (attempt <= MAX_RETRIES) {
     try {
@@ -131,15 +135,14 @@ export async function estimateCalories(base64Image: string): Promise<CalorieEsti
       debug.log(`Using API base URL: ${apiBaseUrl}`);
       
       // Log if this is likely a mobile device
-      const isMobile = typeof window !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      console.log(`Request from mobile device: ${isMobile}`);
+      console.log(`Request from mobile device: ${isMobileDevice}`);
       
       // Measure image data size in MB for debugging
       const imageSizeMB = (base64Image.length * 0.75) / (1024 * 1024);
       console.log(`Image data size: ${imageSizeMB.toFixed(2)} MB`);
       
       // For iOS devices, try the dedicated iOS endpoint first
-      if (isIOS) {
+      if (isIOSDevice) {
         try {
           console.log("iOS device detected, using dedicated mobile endpoint...");
           // Add a random query parameter to avoid caching issues on iOS
@@ -228,7 +231,7 @@ export async function estimateCalories(base64Image: string): Promise<CalorieEsti
         const errorMessage = error.response?.data?.error || error.message || 'Network error';
         
         // Custom error message for iOS devices
-        if (isIOS) {
+        if (isIOSDevice) {
           if (error.code === 'ECONNABORTED') {
             throw new ApiError(`The request timed out. iOS devices sometimes take longer to process images. Please try with a smaller image or WiFi connection.`, 408);
           } else if (!error.response) {

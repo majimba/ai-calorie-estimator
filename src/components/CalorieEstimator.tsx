@@ -11,6 +11,12 @@ import { AlertTriangleIcon, LoaderIcon } from '@/components/icons';
 import { ApiError } from '@/lib/error';
 import { ResultDisplay } from './ResultDisplay';
 
+// Safe browser detection utilities
+const isBrowser = typeof window !== 'undefined';
+const getUserAgent = () => isBrowser ? navigator.userAgent : '';
+const isMobileDevice = isBrowser && /iPhone|iPad|iPod|Android/i.test(getUserAgent());
+const isIOSDevice = isBrowser && /iPhone|iPad|iPod/i.test(getUserAgent());
+
 export function CalorieEstimator() {
   const [base64Image, setBase64Image] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -19,13 +25,9 @@ export function CalorieEstimator() {
   const [networkInfo, setNetworkInfo] = useState<string>('');
   const [retryCount, setRetryCount] = useState(0);
 
-  // Check if this is a mobile device
-  const isMobile = typeof window !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-  const isIOS = typeof window !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
-  
-  // Collect network info on mount
+  // Get network info on mount
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (isBrowser) {
       const connection = (navigator as any).connection;
       let networkInfo = 'Network info not available';
       
@@ -34,20 +36,20 @@ export function CalorieEstimator() {
       }
       
       // For iOS, add more detailed diagnostics
-      if (isIOS) {
+      if (isIOSDevice) {
         // Check if we're on a webapp or standalone mode
         const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
         networkInfo += `, iOS${isStandalone ? ' (standalone)' : ''}`;
         
         // Add browser info for iOS
-        const isSafari = /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
-        const isChrome = /CriOS/.test(navigator.userAgent);
+        const isSafari = /Safari/.test(getUserAgent()) && !/Chrome/.test(getUserAgent());
+        const isChrome = /CriOS/.test(getUserAgent());
         networkInfo += `, Browser: ${isSafari ? 'Safari' : isChrome ? 'Chrome' : 'Other'}`;
       }
       
       setNetworkInfo(networkInfo);
     }
-  }, [isIOS]);
+  }, []);
 
   const handleImageCapture = async (imageData: string) => {
     try {
@@ -62,7 +64,7 @@ export function CalorieEstimator() {
       console.log(`Processing image, approx size: ${sizeMB.toFixed(2)} MB`);
       
       // For iOS devices, show a small delay with a special message
-      if (isIOS) {
+      if (isIOSDevice) {
         console.log('iOS device detected, showing enhanced loading message');
       }
       
@@ -77,7 +79,7 @@ export function CalorieEstimator() {
       
       if (error instanceof ApiError) {
         // For network errors on mobile, provide specific guidance
-        if (isMobile && (error.message.includes('connect') || error.message.includes('network') || error.message.includes('timeout'))) {
+        if (isMobileDevice && (error.message.includes('connect') || error.message.includes('network') || error.message.includes('timeout'))) {
           setError(`Mobile connectivity issue: ${error.message}. Try using WiFi or a better connection.`);
         } else {
           setError(error.message);
@@ -107,7 +109,7 @@ export function CalorieEstimator() {
           <AlertTriangleIcon className="h-5 w-5 text-red-500 mr-2 mt-0.5" />
           <div>
             <div className="font-semibold">{error}</div>
-            {isMobile && (
+            {isMobileDevice && (
               <div className="mt-2 text-sm">
                 <p className="font-medium">Tip: Mobile networks can be unreliable. Try using WiFi if available.</p>
                 <div className="text-xs mt-1">{networkInfo}</div>
@@ -135,9 +137,9 @@ export function CalorieEstimator() {
           <div>
             <p className="font-medium">Analyzing your food...</p>
             <p className="text-sm mt-1">
-              {isIOS ? 
+              {isIOSDevice ? 
                 'iOS devices may take longer. Please keep the browser open and connected to the internet.' : 
-                isMobile ? 
+                isMobileDevice ? 
                   'This may take up to 40 seconds on mobile connections.' : 
                   'This should only take a few seconds.'}
             </p>
@@ -162,7 +164,7 @@ export function CalorieEstimator() {
         <p>This app uses AI to estimate calories in food images.</p>
         <p>Results are approximate.</p>
         
-        {isMobile && (
+        {isMobileDevice && (
           <p className="mt-2 text-xs text-gray-400">
             For best results on mobile, use WiFi and ensure good lighting when taking photos.
           </p>

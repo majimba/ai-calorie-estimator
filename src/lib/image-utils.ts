@@ -1,3 +1,9 @@
+// Safe browser detection utilities
+const isBrowser = typeof window !== 'undefined';
+const getUserAgent = () => isBrowser ? navigator.userAgent : '';
+const isMobileDevice = isBrowser && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(getUserAgent());
+const isIOSDevice = isBrowser && /iPad|iPhone|iPod/.test(getUserAgent());
+
 /**
  * Convert a File object to a base64 string
  * @param file The file to convert
@@ -36,14 +42,11 @@ export function compressImage(
       console.log('Starting image compression, file size:', file.size);
       
       // For iOS devices specifically, use a more aggressive compression approach
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-      
-      if (isIOS) {
+      if (isIOSDevice) {
         console.log('iOS device detected, applying iOS-specific compression settings');
         maxWidth = Math.min(maxWidth, 500); // Smaller for iOS
         quality = Math.min(quality, 0.6); // Lower quality for iOS
-      } else if (isMobile) {
+      } else if (isMobileDevice) {
         console.log('Mobile device detected, applying mobile-specific compression settings');
         maxWidth = Math.min(maxWidth, 600); // Smaller for mobile
         quality = Math.min(quality, 0.7); // Lower quality for mobile
@@ -68,14 +71,14 @@ export function compressImage(
               console.log(`Original image dimensions: ${img.width}x${img.height}`);
               
               // For very small images, don't compress
-              if (img.width <= maxWidth && file.size < 300000 && !isMobile) {
+              if (img.width <= maxWidth && file.size < 300000 && !isMobileDevice) {
                 console.log('Image is already small enough, skipping compression');
                 resolve(event.target?.result as string);
                 return;
               }
               
               // For mobile images always compress, regardless of size
-              if (isMobile && file.size < 300000) {
+              if (isMobileDevice && file.size < 300000) {
                 console.log('Small mobile image, using light compression');
                 quality = Math.min(quality + 0.1, 0.9); // Use slightly better quality for small mobile images
               }
@@ -102,10 +105,10 @@ export function compressImage(
                 }
                 
                 // Use crisp edges rendering for sharper images on iOS
-                if (isIOS) {
+                if (isIOSDevice) {
                   ctx.imageSmoothingEnabled = true;
                   ctx.imageSmoothingQuality = 'medium';
-                } else if (isMobile) {
+                } else if (isMobileDevice) {
                   ctx.imageSmoothingEnabled = true;
                   ctx.imageSmoothingQuality = 'high';
                 }
@@ -136,7 +139,7 @@ export function compressImage(
           img.src = event.target?.result as string;
           
           // For iOS, add a timeout to prevent hanging
-          if (isIOS) {
+          if (isIOSDevice) {
             setTimeout(() => {
               if (!img.complete) {
                 console.error('Image loading timed out on iOS');

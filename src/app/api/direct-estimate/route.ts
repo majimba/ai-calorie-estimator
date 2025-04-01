@@ -16,16 +16,19 @@ const requestSchema = z.object({
 
 // Helper function to add CORS headers
 function corsHeaders(response: NextResponse) {
+  // iOS browsers are particularly sensitive to CORS headers
   response.headers.set('Access-Control-Allow-Credentials', 'true');
   response.headers.set('Access-Control-Allow-Origin', '*');
   response.headers.set('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  response.headers.set('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+  response.headers.set('Access-Control-Allow-Headers', '*');
+  response.headers.set('Access-Control-Max-Age', '86400'); // Cache preflight for 24 hours
   return response;
 }
 
 // Handle OPTIONS request for CORS preflight
 export async function OPTIONS() {
-  return corsHeaders(NextResponse.json({}, { status: 200 }));
+  const response = new NextResponse(null, { status: 204 }); // Use 204 No Content
+  return corsHeaders(response);
 }
 
 // Create a timeout promise
@@ -37,11 +40,21 @@ function timeout(ms: number) {
 
 export async function POST(request: Request) {
   console.log('📝 Direct API: Received direct estimation request');
+  console.log('📝 Direct API: Request headers:', Object.fromEntries(request.headers.entries()));
   
   try {
     // Parse request body
     console.log('📝 Direct API: Parsing request body');
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch (parseError) {
+      console.error('📝 Direct API: Error parsing JSON request body:', parseError);
+      return corsHeaders(NextResponse.json({
+        success: false,
+        error: "Invalid JSON in request body. Make sure the Content-Type is application/json.",
+      } as ApiResponse<null>, { status: 400 }));
+    }
     console.log('📝 Direct API: Request body parsed');
     
     // Validate request body
@@ -73,10 +86,17 @@ export async function POST(request: Request) {
     try {
       console.log('📝 Direct API: Sending image directly to OpenAI');
       
+      // iOS/Safari needs reliable timeouts so use a longer one
+      const isIOSRequest = request.headers.get('user-agent')?.includes('iPhone') || 
+                          request.headers.get('user-agent')?.includes('iPad');
+      const timeoutMs = isIOSRequest ? 150000 : API_TIMEOUT; // 2.5 minutes for iOS
+      
+      console.log(`📝 Direct API: Using timeout of ${timeoutMs}ms`);
+      
       // Race between processing and timeout
       const result = await Promise.race([
         processDirectEstimation(image),
-        timeout(API_TIMEOUT)
+        timeout(timeoutMs)
       ]);
       
       console.log('📝 Direct API: Processing completed successfully');
@@ -85,7 +105,7 @@ export async function POST(request: Request) {
       console.error('📝 Direct API: Request timed out:', timeoutError);
       return corsHeaders(NextResponse.json({
         success: false,
-        error: "Request timed out. This may be due to a slow connection or heavy server load.",
+        error: "Request timed out. This may be due to a slow connection or heavy server load. Try with smaller images or WiFi.",
       } as ApiResponse<null>, { status: 408 }));
     }
   } catch (error) {

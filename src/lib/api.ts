@@ -8,30 +8,44 @@ import { debug } from './debug';
 const apiBaseUrl = (() => {
   // In browser environments
   if (typeof window !== 'undefined') {
-    const isAbsoluteUrl = config.api.baseUrl.startsWith('http');
-    if (isAbsoluteUrl) {
-      return config.api.baseUrl;
-    } else {
-      // If it's a relative URL, use the current origin
-      const origin = window.location.origin;
-      console.log('Current origin:', origin);
-      const baseUrl = `${origin}${config.api.baseUrl}`;
-      console.log('Constructed API base URL:', baseUrl);
-      return baseUrl;
+    // iOS Safari-compatible URL handling
+    try {
+      const isAbsoluteUrl = config.api.baseUrl.startsWith('http');
+      
+      if (isAbsoluteUrl) {
+        return config.api.baseUrl;
+      } else {
+        // If it's a relative URL, use the current origin
+        const origin = window.location.origin;
+        console.log('Current origin:', origin);
+        const baseUrl = `${origin}${config.api.baseUrl}`;
+        console.log('Constructed API base URL:', baseUrl);
+        return baseUrl;
+      }
+    } catch (error) {
+      console.error('Error constructing API URL:', error);
+      // Fallback to a simple relative URL that works in most browsers
+      return '/api';
     }
   }
   // In server environments, use the config value
   return config.api.baseUrl;
 })();
 
+// iOS detection
+const isIOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent);
+
 // Create API client with interceptors for debugging
 const api = axios.create({
   baseURL: apiBaseUrl,
   headers: {
     'Content-Type': 'application/json',
+    // iOS Safari needs explicitly set Accept header
+    'Accept': 'application/json, text/plain, */*',
   },
-  // Increase timeout for mobile networks
-  timeout: 90000, // 90 seconds
+  // Increase timeout for mobile networks - iOS devices may need even longer
+  timeout: isIOS ? 120000 : 90000, // 120 seconds for iOS, 90 for others
+  // withCredentials: false, // Explicitly disable credentials for CORS
 });
 
 // Add request interceptor for debugging
@@ -77,6 +91,13 @@ export async function estimateCalories(base64Image: string): Promise<CalorieEsti
   const MAX_RETRIES = 3;
   let attempt = 0;
   
+  // Check for iOS specific browser
+  const isIOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const isIOSChrome = isIOS && /CriOS/.test(navigator.userAgent);
+  const isSafari = typeof navigator !== 'undefined' && /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
+  
+  console.log(`Browser detection: iOS: ${isIOS}, iOS Chrome: ${isIOSChrome}, Safari: ${isSafari}`);
+  
   while (attempt <= MAX_RETRIES) {
     try {
       debug.log(`Attempt ${attempt + 1}/${MAX_RETRIES + 1}: Preparing calorie estimation request`);
@@ -89,6 +110,33 @@ export async function estimateCalories(base64Image: string): Promise<CalorieEsti
       // Measure image data size in MB for debugging
       const imageSizeMB = (base64Image.length * 0.75) / (1024 * 1024);
       console.log(`Image data size: ${imageSizeMB.toFixed(2)} MB`);
+      
+      // For iOS devices, try the dedicated iOS endpoint first
+      if (isIOS) {
+        try {
+          console.log("iOS device detected, using dedicated mobile endpoint...");
+          const response = await api.post<ApiResponse<CalorieEstimation>>(
+            '/api/mobile-estimate',
+            { image: base64Image },
+            {
+              // Explicitly set headers for iOS
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-iOS-Client': 'true'
+              },
+              timeout: 180000 // 3 minutes
+            }
+          );
+          
+          if (response.data.success && response.data.data) {
+            return response.data.data;
+          }
+          throw new Error("iOS-specific endpoint failed");
+        } catch (iosError) {
+          console.log("iOS-specific endpoint failed, falling back to direct...", iosError);
+        }
+      }
       
       // Simplify approach - try both endpoints
       try {
@@ -147,8 +195,16 @@ export async function estimateCalories(base64Image: string): Promise<CalorieEsti
         const statusCode = error.response?.status || 500;
         const errorMessage = error.response?.data?.error || error.message || 'Network error';
         
-        // More detailed error message based on specific error
-        if (error.code === 'ECONNABORTED') {
+        // Custom error message for iOS devices
+        if (isIOS) {
+          if (error.code === 'ECONNABORTED') {
+            throw new ApiError(`The request timed out. iOS devices sometimes take longer to process images. Please try with a smaller image or WiFi connection.`, 408);
+          } else if (!error.response) {
+            throw new ApiError('Could not connect to the server from your iOS device. This may be due to network restrictions or privacy settings. Try using WiFi and check your browser settings.', 0);
+          }
+        } 
+        // Standard error messages for other devices
+        else if (error.code === 'ECONNABORTED') {
           throw new ApiError(`The request timed out after ${api.defaults.timeout}ms. This may be due to a slow mobile connection or a large image file.`, 408);
         } else if (!error.response) {
           throw new ApiError('Could not connect to the server. This may be due to a weak mobile signal or network issues. Please try again on WiFi if possible.', 0);

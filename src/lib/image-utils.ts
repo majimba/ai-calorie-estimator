@@ -34,6 +34,15 @@ export function compressImage(
   return new Promise((resolve, reject) => {
     try {
       console.log('Starting image compression, file size:', file.size);
+      
+      // For iOS devices specifically, use a more aggressive compression approach
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      if (isIOS) {
+        console.log('iOS device detected, applying iOS-specific compression settings');
+        maxWidth = Math.min(maxWidth, 600); // Smaller for iOS
+        quality = Math.min(quality, 0.7); // Lower quality for iOS
+      }
+      
       const reader = new FileReader();
       reader.readAsDataURL(file);
       
@@ -42,12 +51,18 @@ export function compressImage(
           console.log('File read successful, creating image object');
           const img = new Image();
           
+          img.onerror = () => {
+            console.error('Error loading image');
+            // On iOS, if image loading fails, try a direct conversion without compression
+            fileToBase64(file).then(resolve).catch(reject);
+          };
+          
           img.onload = () => {
             try {
               console.log(`Original image dimensions: ${img.width}x${img.height}`);
               
               // For very small images, don't compress
-              if (img.width <= maxWidth && file.size < 300000) {
+              if (img.width <= maxWidth && file.size < 300000 && !isIOS) {
                 console.log('Image is already small enough, skipping compression');
                 resolve(event.target?.result as string);
                 return;
@@ -68,46 +83,65 @@ export function compressImage(
               canvas.width = width;
               canvas.height = height;
               
-              const ctx = canvas.getContext('2d');
-              if (!ctx) {
-                console.error('Could not get canvas context');
-                reject(new Error('Could not get canvas context'));
-                return;
+              try {
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                  throw new Error('Could not get canvas context');
+                }
+                
+                // Use crisp edges rendering for sharper images on iOS
+                if (isIOS) {
+                  ctx.imageSmoothingEnabled = true;
+                  ctx.imageSmoothingQuality = 'high';
+                }
+                
+                ctx.fillStyle = '#FFFFFF'; // Use white background
+                ctx.fillRect(0, 0, width, height);
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // Convert to JPG for most consistent results across browsers
+                const dataUrl = canvas.toDataURL('image/jpeg', quality);
+                console.log('Compression complete, new data URL length:', dataUrl.length);
+                
+                resolve(dataUrl);
+              } catch (canvasError) {
+                console.error('Canvas error:', canvasError);
+                // If canvas operations fail (which can happen on some iOS versions)
+                // fall back to the original file
+                console.log('Canvas operation failed, falling back to original image');
+                resolve(event.target?.result as string);
               }
-              
-              // Draw the image on the canvas
-              ctx.drawImage(img, 0, 0, width, height);
-              
-              // Convert to data URL
-              const dataUrl = canvas.toDataURL('image/jpeg', quality);
-              console.log('Compression complete, new data URL length:', dataUrl.length);
-              
-              resolve(dataUrl);
-            } catch (err) {
-              console.error('Error during canvas operations:', err);
-              reject(err);
+            } catch (error) {
+              console.error('Error in image onload handler:', error);
+              reject(error);
             }
           };
           
-          img.onerror = (err) => {
-            console.error('Error loading image:', err);
-            reject(new Error('Error loading image'));
-          };
-          
+          // Set source to load the image
           img.src = event.target?.result as string;
-        } catch (err) {
-          console.error('Error in image onload handler:', err);
-          reject(err);
+          
+          // For iOS, add a timeout to prevent hanging
+          if (isIOS) {
+            setTimeout(() => {
+              if (!img.complete) {
+                console.error('Image loading timed out on iOS');
+                resolve(event.target?.result as string);
+              }
+            }, 3000);
+          }
+        } catch (error) {
+          console.error('Error processing image after file read:', error);
+          reject(error);
         }
       };
       
-      reader.onerror = (err) => {
-        console.error('Error reading file:', err);
-        reject(new Error('Error reading file'));
+      reader.onerror = (error) => {
+        console.error('Error reading file:', error);
+        reject(error);
       };
-    } catch (err) {
-      console.error('Unexpected error in compressImage:', err);
-      reject(err);
+    } catch (error) {
+      console.error('Unexpected error in compressImage:', error);
+      reject(error);
     }
   });
 }

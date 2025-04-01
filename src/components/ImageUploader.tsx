@@ -20,14 +20,21 @@ export function ImageUploader({ onImageCapture }: ImageUploaderProps) {
       // Log file information for debugging
       console.log('File selected:', file.name, file.type, file.size);
       
-      // Check if this is likely a mobile device
+      // Check if this is likely a mobile device and specifically iOS
       const isMobile = typeof window !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      const isIOS = typeof window !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent);
       
-      // For mobile devices, use stronger compression to reduce network load
+      // For iOS devices, use even stronger compression 
       let quality = 0.8;
       let maxWidth = 800;
       
-      if (isMobile) {
+      if (isIOS) {
+        console.log('iOS device detected, using iOS-specific compression settings');
+        maxWidth = 500; // Even smaller for iOS
+        quality = file.size > 2000000 ? 0.5 : // Very large image - use very aggressive compression
+                 file.size > 1000000 ? 0.6 : // Large image
+                 file.size > 500000 ? 0.7 : 0.75; // Medium/small image
+      } else if (isMobile) {
         console.log('Mobile device detected, using stronger compression');
         maxWidth = 600; // Smaller image for mobile
         quality = file.size > 3000000 ? 0.6 : // Very large image
@@ -47,8 +54,41 @@ export function ImageUploader({ onImageCapture }: ImageUploaderProps) {
       const sizeEstimate = (compressedImage.length * 0.75) / (1024 * 1024);
       console.log(`Estimated compressed size: ${sizeEstimate.toFixed(2)} MB`);
       
+      // If this is iOS and still over 1.5MB, compress even more aggressively
+      if (isIOS && sizeEstimate > 1.5) {
+        console.log('iOS image still too large, applying extreme compression');
+        try {
+          const imgElement = new Image();
+          imgElement.src = compressedImage;
+          
+          await new Promise(resolve => {
+            imgElement.onload = resolve;
+          });
+          
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.min(imgElement.width, 400); // Very small for iOS
+          canvas.height = Math.round((imgElement.height * canvas.width) / imgElement.width);
+          
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            // Use more aggressive compression settings
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'low';
+            ctx.drawImage(imgElement, 0, 0, canvas.width, canvas.height);
+            
+            const extremeCompressionImage = canvas.toDataURL('image/jpeg', 0.5);
+            console.log('Extreme compression complete');
+            setPreviewUrl(extremeCompressionImage);
+            onImageCapture(extremeCompressionImage);
+            return;
+          }
+        } catch (compressionError) {
+          console.error('Error during extreme compression:', compressionError);
+          // Continue with normal compressed image
+        }
+      }
       // If still too large for mobile, compress again with lower quality
-      if (isMobile && sizeEstimate > 1) {
+      else if (isMobile && sizeEstimate > 1) {
         console.log('Image still large for mobile, compressing further');
         const imgElement = new Image();
         imgElement.src = compressedImage;
@@ -158,7 +198,6 @@ export function ImageUploader({ onImageCapture }: ImageUploaderProps) {
         ref={fileInputRef}
         onChange={handleFileChange}
         accept="image/*"
-        capture="environment"
         className="hidden"
         disabled={isProcessing}
       />

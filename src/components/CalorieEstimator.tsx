@@ -8,6 +8,8 @@ import { CalorieEstimation } from '@/lib/types';
 import { formatErrorMessage } from '@/lib/error';
 import { debug } from '@/lib/debug';
 import { AlertTriangleIcon, LoaderIcon } from '@/components/icons';
+import { ApiError } from '@/lib/error';
+import { ResultDisplay } from './ResultDisplay';
 
 export function CalorieEstimator() {
   const [base64Image, setBase64Image] = useState<string | null>(null);

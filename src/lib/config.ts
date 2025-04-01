@@ -9,6 +9,9 @@ export const config = {
     url: process.env.CLOUDINARY_URL || '',
   },
   api: {
-    baseUrl: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api',
+    // In production environments, always use a relative URL
+    baseUrl: typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+      ? '/api'
+      : process.env.NEXT_PUBLIC_API_URL || '/api',
   },
 }; 

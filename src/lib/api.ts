@@ -8,7 +8,16 @@ import { debug } from './debug';
 const apiBaseUrl = (() => {
   // In browser environments
   if (typeof window !== 'undefined') {
-    // iOS Safari-compatible URL handling
+    // Check if we're in production or development
+    const isProduction = window.location.hostname !== 'localhost';
+    
+    // In production, always use relative URLs
+    if (isProduction) {
+      console.log('Running in production, using relative API URLs');
+      return '/api';
+    }
+    
+    // In development, use configured URL or fallback to relative path
     try {
       const isAbsoluteUrl = config.api.baseUrl.startsWith('http');
       
@@ -59,7 +68,20 @@ api.interceptors.request.use(
     debug.network.request(config.url || '', config.method || 'unknown', config.data);
     // Log full request URL for debugging
     const fullUrl = `${config.baseURL}${config.url}`;
-    console.log(`Making request to: ${fullUrl}`);
+    console.log(`Making API request to: ${fullUrl}`);
+    
+    // Add additional URL verification for production debugging
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname;
+      // Check for suspicious URLs that might cause errors
+      if (fullUrl.includes('localhost') && hostname !== 'localhost') {
+        console.error(`⚠️ WARNING: Making request to localhost (${fullUrl}) from production hostname (${hostname})`);
+      }
+      if (fullUrl.includes('http:') && window.location.protocol === 'https:') {
+        console.error(`⚠️ WARNING: Making insecure request (${fullUrl}) from secure context`);
+      }
+    }
+    
     return config;
   },
   (error) => {
@@ -123,7 +145,7 @@ export async function estimateCalories(base64Image: string): Promise<CalorieEsti
           // Add a random query parameter to avoid caching issues on iOS
           const iOSCacheBuster = Date.now();
           const response = await api.post<ApiResponse<CalorieEstimation>>(
-            `/api/mobile-estimate?_=${iOSCacheBuster}`,
+            `/mobile-estimate?_=${iOSCacheBuster}`,
             { image: base64Image },
             {
               // Explicitly set headers for iOS
@@ -153,7 +175,7 @@ export async function estimateCalories(base64Image: string): Promise<CalorieEsti
         // First try the new direct endpoint
         console.log("Trying direct estimation endpoint...");
         const response = await api.post<ApiResponse<CalorieEstimation>>(
-          '/api/direct-estimate',
+          '/direct-estimate',
           { image: base64Image }
         );
         
@@ -169,7 +191,7 @@ export async function estimateCalories(base64Image: string): Promise<CalorieEsti
         };
         
         const response = await api.post<ApiResponse<CalorieEstimation>>(
-          '/api/estimate-calories',
+          '/estimate-calories',
           requestData
         );
         

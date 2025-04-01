@@ -13,68 +13,117 @@ interface UploadApiResponse {
   [key: string]: any;
 }
 
-// Configure Cloudinary with URL or individual credentials
-if (process.env.CLOUDINARY_URL) {
-  // If CLOUDINARY_URL is provided, use that (it contains all credentials)
-  const url = process.env.CLOUDINARY_URL;
-  // Format is cloudinary://api_key:api_secret@cloud_name
-  const matches = url.match(/cloudinary:\/\/([^:]+):([^@]+)@(.+)/);
+// Print Cloudinary config for debugging (redacting secrets)
+const printConfig = () => {
+  const config = cloudinary.config();
   
-  if (matches && matches.length === 4) {
-    const [, apiKey, apiSecret, cloudName] = matches;
-    cloudinary.config({
-      cloud_name: cloudName,
-      api_key: apiKey,
-      api_secret: apiSecret,
-    });
+  // If api_key is missing or api_secret is missing, that indicates a configuration issue
+  if (!config.api_key || !config.api_secret || !config.cloud_name) {
+    console.error('❌ CLOUDINARY CONFIG ERROR: Missing required configuration.');
+    console.error(`Cloud name: ${config.cloud_name ? 'Set ✅' : 'MISSING ❌'}`);
+    console.error(`API Key: ${config.api_key ? 'Set ✅' : 'MISSING ❌'}`);
+    console.error(`API Secret: ${config.api_secret ? 'Set ✅' : 'MISSING ❌'}`);
+    
+    // Add warning about cloud_name format which is a common error
+    if (config.cloud_name && (config.cloud_name.includes('@') || config.cloud_name.includes(':'))) {
+      console.error('❌ CLOUD_NAME FORMAT ERROR: Your cloud_name contains @ or : symbols.');
+      console.error('   This likely means the CLOUDINARY_URL format is incorrect.');
+      console.error('   It should be: cloudinary://API_KEY:API_SECRET@CLOUD_NAME');
+    }
+    
+    console.error('Environment variables:');
+    if (typeof process !== 'undefined') {
+      console.error(`CLOUDINARY_URL: ${process.env.CLOUDINARY_URL ? 'Set (value hidden)' : 'MISSING'}`);
+    }
   } else {
-    console.error('Invalid CLOUDINARY_URL format');
-    // Fallback to individual credentials
-    cloudinary.config({
-      cloud_name: config.cloudinary.cloudName,
-      api_key: config.cloudinary.apiKey,
-      api_secret: config.cloudinary.apiSecret,
-    });
+    console.log('✅ Cloudinary configuration is valid');
+    console.log(`   Cloud name: ${config.cloud_name}`);
+    console.log(`   API Key: ${config.api_key.substring(0, 4)}...`);
+    console.log(`   API Secret: ${config.api_secret.substring(0, 4)}...`);
   }
-} else {
-  // Otherwise, use individual credentials
-  cloudinary.config({
-    cloud_name: config.cloudinary.cloudName,
-    api_key: config.cloudinary.apiKey,
-    api_secret: config.cloudinary.apiSecret,
-  });
-}
+};
+
+// Setup Cloudinary configuration
+// This should use the CLOUDINARY_URL environment variable automatically
+cloudinary.config({
+  secure: true,
+});
+
+// Log configuration
+console.log('🌩️ Checking Cloudinary configuration...');
+printConfig();
 
 /**
- * Upload a base64 image to Cloudinary
+ * Upload an image to Cloudinary
  * @param base64Image Base64 encoded image data
  * @returns URL of the uploaded image
  */
 export async function uploadImage(base64Image: string): Promise<string> {
+  console.log('🌩️ Cloudinary: Starting image upload process');
+  
+  // Validate configuration before attempting upload
+  const config = cloudinary.config();
+  if (!config.api_key || !config.api_secret || !config.cloud_name) {
+    throw new Error('Cloudinary is not properly configured. Check CLOUDINARY_URL environment variable.');
+  }
+  
+  // Calculate approximate size
+  const dataSize = (base64Image.length * 0.75) / (1024 * 1024);
+  console.log(`🌩️ Cloudinary: Uploading image, approximate size: ${dataSize.toFixed(2)}MB`);
+  
   try {
-    // Remove the data URL prefix if present
-    const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
+    // Set a reasonable timeout for uploading to Cloudinary
+    const uploadTimeout = 30000; // 30 seconds
     
-    const result = await new Promise<UploadApiResponse>((resolve, reject) => {
+    // Create a promise that will reject after timeout
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Cloudinary upload timed out after 30 seconds')), uploadTimeout);
+    });
+    
+    // The actual upload function
+    const uploadPromise = new Promise<string>((resolve, reject) => {
       cloudinary.uploader.upload(
-        `data:image/jpeg;base64,${base64Data}`,
+        base64Image, 
         {
-          folder: 'calorie-estimator',
           resource_type: 'image',
+          // Use eager transformation to create a smaller version for faster analysis
+          transformation: [
+            { width: 800, crop: 'limit' },
+            { quality: 'auto:low' }
+          ],
+          folder: 'ai-calorie-estimator',
         },
         (error, result) => {
           if (error) {
-            reject(error);
+            console.error('🌩️ Cloudinary: Upload error:', error);
+            reject(new Error(`Cloudinary upload error: ${error.message}`));
+          } else if (result) {
+            console.log('🌩️ Cloudinary: Upload successful:', result.secure_url);
+            resolve(result.secure_url);
           } else {
-            resolve(result as UploadApiResponse);
+            reject(new Error('Cloudinary upload failed with unknown error'));
           }
         }
       );
     });
-
-    return result.secure_url;
+    
+    // Race between the upload and the timeout
+    const result = await Promise.race([uploadPromise, timeoutPromise]);
+    return result as string;
   } catch (error) {
-    console.error('Error uploading image to Cloudinary:', error);
-    throw error;
+    console.error('🌩️ Cloudinary: Error during upload process:', error);
+    
+    // Check for network-related errors
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage.includes('Network') || errorMessage.includes('timeout') || errorMessage.includes('ENOTFOUND')) {
+      throw new Error(`Cloudinary network error: The server had trouble connecting to Cloudinary. This may be due to network connectivity issues.`);
+    }
+    
+    // Check for authentication errors
+    if (errorMessage.includes('auth') || errorMessage.includes('key') || errorMessage.includes('credentials')) {
+      throw new Error(`Cloudinary configuration error: Server authentication failed. Please check the CLOUDINARY_URL environment variable.`);
+    }
+    
+    throw new Error(`Cloudinary error: ${errorMessage}`);
   }
 } 

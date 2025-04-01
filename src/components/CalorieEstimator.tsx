@@ -1,128 +1,145 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ImageUploader } from './ImageUploader';
 import { ResultsDisplay } from './ResultsDisplay';
-import { estimateCaloriesWithErrorHandling } from '@/lib/api';
+import { estimateCalories } from '@/lib/api';
 import { CalorieEstimation } from '@/lib/types';
 import { formatErrorMessage } from '@/lib/error';
 import { debug } from '@/lib/debug';
+import { AlertTriangleIcon, LoaderIcon } from '@/components/icons';
 
 export function CalorieEstimator() {
-  const [isLoading, setIsLoading] = useState(false);
+  const [base64Image, setBase64Image] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<CalorieEstimation | null>(null);
+  const [results, setResults] = useState<CalorieEstimation | null>(null);
+  const [networkInfo, setNetworkInfo] = useState<string>('');
+  const [retryCount, setRetryCount] = useState(0);
 
-  const handleImageCapture = async (base64Image: string) => {
-    debug.log('Image captured in CalorieEstimator', { imageSize: base64Image.length });
-    setIsLoading(true);
-    setError(null);
-    
-    try {
-      debug.log('Calling estimateCaloriesWithErrorHandling');
-      const { data, error } = await estimateCaloriesWithErrorHandling(base64Image);
-      
-      if (error) {
-        debug.error('Error from estimateCaloriesWithErrorHandling', error);
-        
-        // Provide more helpful error messages for mobile users
-        if (error.includes('timeout') || error.includes('Network Error')) {
-          setError('Connection problem detected. Please check your internet connection and try again. Mobile connections may be slower.');
-        } else if (error.includes('connect to the server')) {
-          setError('Could not connect to the server. This may be due to a weak mobile signal. Try again when you have a better connection.');
-        } else {
-          setError(error);
-        }
-      } else if (data) {
-        debug.log('Received calorie estimation result', { 
-          calories: data.calories,
-          confidence: data.confidence,
-          foodItems: data.foodItems.length
-        });
-        setResult(data);
+  // Check if this is a mobile device
+  const isMobile = typeof window !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  
+  // Collect network info on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const connection = (navigator as any).connection;
+      if (connection) {
+        setNetworkInfo(`Network: ${connection.effectiveType || 'unknown'}, RTT: ${connection.rtt || 'unknown'}ms`);
       } else {
-        debug.error('No data or error returned', null);
+        setNetworkInfo('Network info not available');
+      }
+    }
+  }, []);
+
+  const handleImageCapture = async (imageData: string) => {
+    try {
+      console.log('Image capture handler triggered');
+      setBase64Image(imageData);
+      setLoading(true);
+      setError(null);
+      setResults(null);
+      
+      // Log the image size for debugging
+      const sizeMB = (imageData.length * 0.75) / (1024 * 1024);
+      console.log(`Processing image, approx size: ${sizeMB.toFixed(2)} MB`);
+      
+      console.log('Starting estimation...');
+      const results = await estimateCalories(imageData);
+      console.log('Estimation complete:', results);
+      
+      setResults(results);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error in handleImageCapture:', error);
+      
+      if (error instanceof ApiError) {
+        // For network errors on mobile, provide specific guidance
+        if (isMobile && (error.message.includes('connect') || error.message.includes('network') || error.message.includes('timeout'))) {
+          setError(`Mobile connectivity issue: ${error.message}. Try using WiFi or a better connection.`);
+        } else {
+          setError(error.message);
+        }
+      } else {
         setError('An unexpected error occurred. Please try again.');
       }
-    } catch (err) {
-      debug.error('Uncaught error in handleImageCapture', err);
-      setError(err instanceof Error ? err.message : 'An unexpected error occurred');
-    } finally {
-      setIsLoading(false);
+      
+      setLoading(false);
     }
   };
 
-  const handleReset = () => {
-    debug.log('Resetting CalorieEstimator state');
-    setResult(null);
-    setError(null);
+  const handleRetry = () => {
+    if (base64Image) {
+      setRetryCount(prev => prev + 1);
+      setError(null);
+      handleImageCapture(base64Image);
+    }
   };
 
-  // Check if we're on a mobile device
-  const isMobile = typeof window !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-
   return (
-    <div className="max-w-3xl mx-auto py-8 px-4">
-      <h1 className="text-3xl font-bold text-center mb-8">AI Calorie Estimator</h1>
+    <div className="w-full max-w-2xl mx-auto p-4">
+      <h1 className="text-3xl font-bold text-center mb-6">AI Calorie Estimator</h1>
       
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 mb-6">
-          <div className="flex">
-            <svg className="h-5 w-5 text-red-500 mr-2 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <div>
-              <p className="font-semibold">Error</p>
-              <p>{error}</p>
-              {isMobile && error.includes('connection') && (
-                <p className="mt-2 text-sm">
-                  Tip: Mobile networks can be unreliable. Try using WiFi if available.
-                </p>
-              )}
-            </div>
+        <div className="bg-red-50 border border-red-200 text-red-700 p-4 mb-6 rounded-md flex items-start">
+          <AlertTriangleIcon className="h-5 w-5 text-red-500 mr-2 mt-0.5" />
+          <div>
+            <div className="font-semibold">{error}</div>
+            {isMobile && (
+              <div className="mt-2 text-sm">
+                <p className="font-medium">Tip: Mobile networks can be unreliable. Try using WiFi if available.</p>
+                <div className="text-xs mt-1">{networkInfo}</div>
+                <button 
+                  onClick={handleRetry} 
+                  className="bg-red-100 hover:bg-red-200 text-red-800 px-3 py-1 rounded mt-2 text-sm"
+                >
+                  Retry Analysis ({retryCount})
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
       
-      {!result ? (
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <p className="text-center text-gray-600 mb-6">
-            Take a photo of your food or upload an image to estimate its calorie content
-          </p>
-          <ImageUploader onImageCapture={handleImageCapture} isLoading={isLoading} />
-          
-          {isLoading && (
-            <div className="mt-6 text-center">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
-              <p className="mt-2 text-gray-600">
-                {isMobile ? 
-                  'Analyzing your food... this may take longer on mobile connections' : 
-                  'Analyzing your food...'
-                }
-              </p>
-            </div>
-          )}
+      {!results && (
+        <div className="bg-white border border-gray-200 p-6 rounded-lg shadow-sm mb-6">
+          <ImageUploader onImageCapture={handleImageCapture} />
         </div>
-      ) : (
-        <div>
-          <ResultsDisplay result={result} />
-          <div className="mt-6 flex justify-center">
-            <button
-              onClick={handleReset}
-              className="bg-blue-500 hover:bg-blue-600 text-white py-2 px-6 rounded-lg"
-            >
-              Analyze Another Photo
-            </button>
+      )}
+      
+      {loading && (
+        <div className="bg-blue-50 border border-blue-100 text-blue-700 p-4 mb-6 rounded-md flex items-center">
+          <LoaderIcon className="h-5 w-5 text-blue-500 mr-2 animate-spin" />
+          <div>
+            <p className="font-medium">Analyzing your food...</p>
+            <p className="text-sm mt-1">
+              {isMobile ? 
+                'This may take up to 40 seconds on mobile connections.' : 
+                'This should only take a few seconds.'}
+            </p>
           </div>
         </div>
       )}
-
-      <div className="mt-12 text-center text-gray-500 text-sm">
-        <p>
-          This app uses AI to estimate calories in food images. Results are approximate.
-        </p>
+      
+      {results && (
+        <div className="bg-white border border-gray-200 p-6 rounded-lg shadow mb-6">
+          <ResultDisplay 
+            results={results} 
+            onReset={() => {
+              setBase64Image(null);
+              setResults(null);
+              setRetryCount(0);
+            }} 
+          />
+        </div>
+      )}
+      
+      <div className="text-center text-gray-500 text-sm mt-8">
+        <p>This app uses AI to estimate calories in food images.</p>
+        <p>Results are approximate.</p>
+        
         {isMobile && (
-          <p className="mt-2">
+          <p className="mt-2 text-xs text-gray-400">
             For best results on mobile, use WiFi and ensure good lighting when taking photos.
           </p>
         )}

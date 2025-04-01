@@ -31,7 +31,7 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
   // Increase timeout for mobile networks
-  timeout: 60000, // 60 seconds
+  timeout: 90000, // 90 seconds
 });
 
 // Add request interceptor for debugging
@@ -52,25 +52,17 @@ api.interceptors.request.use(
 // Add response interceptor for debugging
 api.interceptors.response.use(
   (response) => {
-    debug.network.response(
-      response.config.url || '',
-      response.status,
-      response.data
-    );
+    debug.network.response(response.config.url || '', response.status, response.data);
     return response;
   },
   (error) => {
-    debug.network.error(error.config?.url || 'unknown', error);
-    // Log more details for mobile debugging
-    if (axios.isAxiosError(error)) {
-      console.error('Request failed:', {
-        url: error.config?.url,
-        method: error.config?.method,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        message: error.message,
-        data: error.response?.data,
-      });
+    if (axios.isAxiosError(error) && error.response) {
+      debug.network.error(
+        error.config?.url || 'unknown',
+        `${error.response.status}: ${JSON.stringify(error.response.data)}`
+      );
+    } else {
+      debug.network.error(error.config?.url || 'unknown', error);
     }
     return Promise.reject(error);
   }
@@ -82,7 +74,7 @@ api.interceptors.response.use(
  * @returns Calorie estimation results
  */
 export async function estimateCalories(base64Image: string): Promise<CalorieEstimation> {
-  const MAX_RETRIES = 2;
+  const MAX_RETRIES = 3;
   let attempt = 0;
   
   while (attempt <= MAX_RETRIES) {
@@ -98,43 +90,45 @@ export async function estimateCalories(base64Image: string): Promise<CalorieEsti
       const imageSizeMB = (base64Image.length * 0.75) / (1024 * 1024);
       console.log(`Image data size: ${imageSizeMB.toFixed(2)} MB`);
       
-      // Log important network info for debugging
-      if (typeof window !== 'undefined') {
-        const connection = (navigator as any).connection;
-        if (connection) {
-          console.log('Network info:', {
-            effectiveType: connection.effectiveType,
-            downlink: connection.downlink,
-            rtt: connection.rtt,
-            saveData: connection.saveData
-          });
+      // Simplify approach - try both endpoints
+      try {
+        // First try the new direct endpoint
+        console.log("Trying direct estimation endpoint...");
+        const response = await api.post<ApiResponse<CalorieEstimation>>(
+          '/api/direct-estimate',
+          { image: base64Image }
+        );
+        
+        if (response.data.success && response.data.data) {
+          return response.data.data;
         }
+        throw new Error("Direct estimation failed");
+      } catch (directError) {
+        console.log("Direct estimation failed, trying original endpoint...", directError);
+        // Fall back to original endpoint
+        const requestData: CalorieEstimationRequest = {
+          image: base64Image,
+        };
+        
+        const response = await api.post<ApiResponse<CalorieEstimation>>(
+          '/api/estimate-calories',
+          requestData
+        );
+        
+        debug.log('Received estimation response');
+        
+        if (!response.data.success || !response.data.data) {
+          debug.error('API reported error', response.data.error);
+          throw new ApiError(response.data.error || 'Failed to estimate calories', response.status);
+        }
+        
+        debug.log('Successfully estimated calories', {
+          calories: response.data.data.calories,
+          foodItems: response.data.data.foodItems.length
+        });
+        
+        return response.data.data;
       }
-      
-      const requestData: CalorieEstimationRequest = {
-        image: base64Image,
-      };
-      
-      debug.log(`Sending estimation request to API (attempt ${attempt + 1})`);
-      
-      const response = await api.post<ApiResponse<CalorieEstimation>>(
-        '/estimate-calories',
-        requestData
-      );
-      
-      debug.log('Received estimation response');
-      
-      if (!response.data.success || !response.data.data) {
-        debug.error('API reported error', response.data.error);
-        throw new ApiError(response.data.error || 'Failed to estimate calories', response.status);
-      }
-      
-      debug.log('Successfully estimated calories', {
-        calories: response.data.data.calories,
-        foodItems: response.data.data.foodItems.length
-      });
-      
-      return response.data.data;
     } catch (error) {
       debug.error(`Error estimating calories (attempt ${attempt + 1})`, error);
       

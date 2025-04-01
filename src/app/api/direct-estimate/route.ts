@@ -9,6 +9,9 @@ const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 // API request timeout (90 seconds)
 const API_TIMEOUT = 90000;
 
+// Extended timeout for mobile devices (3 minutes)
+const MOBILE_TIMEOUT = 180000;
+
 // Validate request body
 const requestSchema = z.object({
   image: z.string().min(1, "Image is required"),
@@ -89,9 +92,12 @@ export async function POST(request: Request) {
       // iOS/Safari needs reliable timeouts so use a longer one
       const isIOSRequest = request.headers.get('user-agent')?.includes('iPhone') || 
                           request.headers.get('user-agent')?.includes('iPad');
-      const timeoutMs = isIOSRequest ? 150000 : API_TIMEOUT; // 2.5 minutes for iOS
+      const isMobileRequest = isIOSRequest || 
+                          request.headers.get('user-agent')?.includes('Android');
+      const timeoutMs = isIOSRequest ? 150000 : 
+                        isMobileRequest ? MOBILE_TIMEOUT : API_TIMEOUT;
       
-      console.log(`📝 Direct API: Using timeout of ${timeoutMs}ms`);
+      console.log(`📝 Direct API: Using timeout of ${timeoutMs}ms for ${isIOSRequest ? 'iOS' : isMobileRequest ? 'mobile' : 'desktop'} request`);
       
       // Race between processing and timeout
       const result = await Promise.race([
@@ -105,7 +111,7 @@ export async function POST(request: Request) {
       console.error('📝 Direct API: Request timed out:', timeoutError);
       return corsHeaders(NextResponse.json({
         success: false,
-        error: "Request timed out. This may be due to a slow connection or heavy server load. Try with smaller images or WiFi.",
+        error: "Request timed out. This may be due to a slow connection or heavy server load. Try with smaller images or WiFi. For mobile devices, try taking a picture with better lighting or using an existing image from your gallery.",
       } as ApiResponse<null>, { status: 408 }));
     }
   } catch (error) {

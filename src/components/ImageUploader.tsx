@@ -30,16 +30,16 @@ export function ImageUploader({ onImageCapture }: ImageUploaderProps) {
       
       if (isIOS) {
         console.log('iOS device detected, using iOS-specific compression settings');
-        maxWidth = 500; // Even smaller for iOS
-        quality = file.size > 2000000 ? 0.5 : // Very large image - use very aggressive compression
-                 file.size > 1000000 ? 0.6 : // Large image
-                 file.size > 500000 ? 0.7 : 0.75; // Medium/small image
+        maxWidth = 400; // Even smaller for iOS
+        quality = file.size > 2000000 ? 0.4 : // Very large image - use very aggressive compression
+                 file.size > 1000000 ? 0.5 : // Large image
+                 file.size > 500000 ? 0.6 : 0.7; // Medium/small image
       } else if (isMobile) {
         console.log('Mobile device detected, using stronger compression');
-        maxWidth = 600; // Smaller image for mobile
-        quality = file.size > 3000000 ? 0.6 : // Very large image
-                 file.size > 1000000 ? 0.7 : // Large image
-                 file.size > 500000 ? 0.8 : 0.85; // Medium/small image
+        maxWidth = 500; // Smaller image for mobile
+        quality = file.size > 3000000 ? 0.5 : // Very large image
+                 file.size > 1000000 ? 0.6 : // Large image
+                 file.size > 500000 ? 0.7 : 0.8; // Medium/small image
       } else {
         // For desktop, use better quality
         quality = file.size < 500000 ? 0.9 : 0.8;
@@ -66,7 +66,7 @@ export function ImageUploader({ onImageCapture }: ImageUploaderProps) {
           });
           
           const canvas = document.createElement('canvas');
-          canvas.width = Math.min(imgElement.width, 400); // Very small for iOS
+          canvas.width = Math.min(imgElement.width, 350); // Even smaller for iOS
           canvas.height = Math.round((imgElement.height * canvas.width) / imgElement.width);
           
           const ctx = canvas.getContext('2d');
@@ -76,7 +76,7 @@ export function ImageUploader({ onImageCapture }: ImageUploaderProps) {
             ctx.imageSmoothingQuality = 'low';
             ctx.drawImage(imgElement, 0, 0, canvas.width, canvas.height);
             
-            const extremeCompressionImage = canvas.toDataURL('image/jpeg', 0.5);
+            const extremeCompressionImage = canvas.toDataURL('image/jpeg', 0.4);
             console.log('Extreme compression complete');
             setPreviewUrl(extremeCompressionImage);
             onImageCapture(extremeCompressionImage);

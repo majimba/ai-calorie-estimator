@@ -37,10 +37,16 @@ export function compressImage(
       
       // For iOS devices specifically, use a more aggressive compression approach
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      
       if (isIOS) {
         console.log('iOS device detected, applying iOS-specific compression settings');
-        maxWidth = Math.min(maxWidth, 600); // Smaller for iOS
-        quality = Math.min(quality, 0.7); // Lower quality for iOS
+        maxWidth = Math.min(maxWidth, 500); // Smaller for iOS
+        quality = Math.min(quality, 0.6); // Lower quality for iOS
+      } else if (isMobile) {
+        console.log('Mobile device detected, applying mobile-specific compression settings');
+        maxWidth = Math.min(maxWidth, 600); // Smaller for mobile
+        quality = Math.min(quality, 0.7); // Lower quality for mobile
       }
       
       const reader = new FileReader();
@@ -62,10 +68,16 @@ export function compressImage(
               console.log(`Original image dimensions: ${img.width}x${img.height}`);
               
               // For very small images, don't compress
-              if (img.width <= maxWidth && file.size < 300000 && !isIOS) {
+              if (img.width <= maxWidth && file.size < 300000 && !isMobile) {
                 console.log('Image is already small enough, skipping compression');
                 resolve(event.target?.result as string);
                 return;
+              }
+              
+              // For mobile images always compress, regardless of size
+              if (isMobile && file.size < 300000) {
+                console.log('Small mobile image, using light compression');
+                quality = Math.min(quality + 0.1, 0.9); // Use slightly better quality for small mobile images
               }
               
               const canvas = document.createElement('canvas');
@@ -91,6 +103,9 @@ export function compressImage(
                 
                 // Use crisp edges rendering for sharper images on iOS
                 if (isIOS) {
+                  ctx.imageSmoothingEnabled = true;
+                  ctx.imageSmoothingQuality = 'medium';
+                } else if (isMobile) {
                   ctx.imageSmoothingEnabled = true;
                   ctx.imageSmoothingQuality = 'high';
                 }

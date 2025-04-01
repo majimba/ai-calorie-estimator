@@ -17,19 +17,61 @@ export function ImageUploader({ onImageCapture, isLoading = false }: ImageUpload
       // Log file information for debugging
       console.log('File selected:', file.name, file.type, file.size);
       
-      // For smaller files, compress less to maintain quality
-      const quality = file.size < 500000 ? 0.9 : 0.8;
+      // Check if this is likely a mobile device
+      const isMobile = typeof window !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      
+      // For mobile devices, use stronger compression to reduce network load
+      let quality = 0.8;
+      let maxWidth = 800;
+      
+      if (isMobile) {
+        console.log('Mobile device detected, using stronger compression');
+        maxWidth = 600; // Smaller image for mobile
+        quality = file.size > 3000000 ? 0.6 : // Very large image
+                 file.size > 1000000 ? 0.7 : // Large image
+                 file.size > 500000 ? 0.8 : 0.85; // Medium/small image
+      } else {
+        // For desktop, use better quality
+        quality = file.size < 500000 ? 0.9 : 0.8;
+      }
       
       // Compress image before uploading
-      console.log('Compressing image...');
-      const compressedImage = await compressImage(file, 800, quality);
+      console.log(`Compressing image with quality ${quality} and max width ${maxWidth}...`);
+      const compressedImage = await compressImage(file, maxWidth, quality);
       console.log('Image compressed successfully');
       
-      setPreviewUrl(compressedImage);
-      onImageCapture(compressedImage);
+      // Estimate compressed size
+      const sizeEstimate = (compressedImage.length * 0.75) / (1024 * 1024);
+      console.log(`Estimated compressed size: ${sizeEstimate.toFixed(2)} MB`);
+      
+      // If still too large for mobile, compress again with lower quality
+      if (isMobile && sizeEstimate > 1) {
+        console.log('Image still large for mobile, compressing further');
+        const imgElement = new Image();
+        imgElement.src = compressedImage;
+        
+        await new Promise(resolve => {
+          imgElement.onload = resolve;
+        });
+        
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.min(imgElement.width, 500);
+        canvas.height = Math.round((imgElement.height * canvas.width) / imgElement.width);
+        
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(imgElement, 0, 0, canvas.width, canvas.height);
+        
+        const secondPassImage = canvas.toDataURL('image/jpeg', 0.6);
+        console.log('Second pass compression complete');
+        setPreviewUrl(secondPassImage);
+        onImageCapture(secondPassImage);
+      } else {
+        setPreviewUrl(compressedImage);
+        onImageCapture(compressedImage);
+      }
     } catch (error) {
       console.error('Error processing image:', error);
-      alert('Error processing image. Please try again with a different image or camera.');
+      alert('Error processing image. Please try again with a different image or camera. If on a mobile device, try using WiFi.');
     }
   };
 

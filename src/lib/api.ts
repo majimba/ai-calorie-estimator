@@ -82,56 +82,93 @@ api.interceptors.response.use(
  * @returns Calorie estimation results
  */
 export async function estimateCalories(base64Image: string): Promise<CalorieEstimation> {
-  try {
-    debug.log('Preparing calorie estimation request');
-    debug.log(`Using API base URL: ${apiBaseUrl}`);
-    
-    // Trim the base64 image if it's very large to log it safely
-    const logLength = Math.min(base64Image.length, 100);
-    console.log(`Image data length: ${base64Image.length}, preview: ${base64Image.substring(0, logLength)}...`);
-    
-    const requestData: CalorieEstimationRequest = {
-      image: base64Image,
-    };
-    
-    debug.log('Sending estimation request to API');
-    
-    const response = await api.post<ApiResponse<CalorieEstimation>>(
-      '/estimate-calories',
-      requestData
-    );
-    
-    debug.log('Received estimation response');
-    
-    if (!response.data.success || !response.data.data) {
-      debug.error('API reported error', response.data.error);
-      throw new ApiError(response.data.error || 'Failed to estimate calories', response.status);
-    }
-    
-    debug.log('Successfully estimated calories', {
-      calories: response.data.data.calories,
-      foodItems: response.data.data.foodItems.length
-    });
-    
-    return response.data.data;
-  } catch (error) {
-    debug.error('Error estimating calories', error);
-    
-    if (axios.isAxiosError(error)) {
-      const statusCode = error.response?.status || 500;
-      const errorMessage = error.response?.data?.error || error.message || 'Network error';
+  const MAX_RETRIES = 2;
+  let attempt = 0;
+  
+  while (attempt <= MAX_RETRIES) {
+    try {
+      debug.log(`Attempt ${attempt + 1}/${MAX_RETRIES + 1}: Preparing calorie estimation request`);
+      debug.log(`Using API base URL: ${apiBaseUrl}`);
       
-      // Provide more helpful error message for common issues
-      if (error.code === 'ECONNABORTED') {
-        throw new ApiError('The request timed out. Please check your internet connection and try again.', 408);
-      } else if (!error.response) {
-        throw new ApiError('Could not connect to the server. Please check your internet connection and try again.', 0);
+      // Log if this is likely a mobile device
+      const isMobile = typeof window !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      console.log(`Request from mobile device: ${isMobile}`);
+      
+      // Measure image data size in MB for debugging
+      const imageSizeMB = (base64Image.length * 0.75) / (1024 * 1024);
+      console.log(`Image data size: ${imageSizeMB.toFixed(2)} MB`);
+      
+      // Log important network info for debugging
+      if (typeof window !== 'undefined') {
+        const connection = (navigator as any).connection;
+        if (connection) {
+          console.log('Network info:', {
+            effectiveType: connection.effectiveType,
+            downlink: connection.downlink,
+            rtt: connection.rtt,
+            saveData: connection.saveData
+          });
+        }
       }
       
-      throw new ApiError(errorMessage, statusCode);
+      const requestData: CalorieEstimationRequest = {
+        image: base64Image,
+      };
+      
+      debug.log(`Sending estimation request to API (attempt ${attempt + 1})`);
+      
+      const response = await api.post<ApiResponse<CalorieEstimation>>(
+        '/estimate-calories',
+        requestData
+      );
+      
+      debug.log('Received estimation response');
+      
+      if (!response.data.success || !response.data.data) {
+        debug.error('API reported error', response.data.error);
+        throw new ApiError(response.data.error || 'Failed to estimate calories', response.status);
+      }
+      
+      debug.log('Successfully estimated calories', {
+        calories: response.data.data.calories,
+        foodItems: response.data.data.foodItems.length
+      });
+      
+      return response.data.data;
+    } catch (error) {
+      debug.error(`Error estimating calories (attempt ${attempt + 1})`, error);
+      
+      // Only retry network connectivity issues, not server errors
+      if (axios.isAxiosError(error) && (!error.response || error.code === 'ECONNABORTED')) {
+        if (attempt < MAX_RETRIES) {
+          attempt++;
+          const delay = attempt * 2000; // Exponential backoff
+          console.log(`Retrying in ${delay}ms... (attempt ${attempt + 1})`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+      }
+      
+      if (axios.isAxiosError(error)) {
+        const statusCode = error.response?.status || 500;
+        const errorMessage = error.response?.data?.error || error.message || 'Network error';
+        
+        // More detailed error message based on specific error
+        if (error.code === 'ECONNABORTED') {
+          throw new ApiError(`The request timed out after ${api.defaults.timeout}ms. This may be due to a slow mobile connection or a large image file.`, 408);
+        } else if (!error.response) {
+          throw new ApiError('Could not connect to the server. This may be due to a weak mobile signal or network issues. Please try again on WiFi if possible.', 0);
+        }
+        
+        throw new ApiError(errorMessage, statusCode);
+      }
+      
+      throw error;
     }
-    throw error;
   }
+  
+  // This should never be reached due to the error handling above, but TypeScript requires a return
+  throw new ApiError('Maximum retry attempts exceeded', 0);
 }
 
 /**

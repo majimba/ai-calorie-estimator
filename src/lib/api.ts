@@ -13,7 +13,11 @@ const apiBaseUrl = (() => {
       return config.api.baseUrl;
     } else {
       // If it's a relative URL, use the current origin
-      return `${window.location.origin}${config.api.baseUrl}`;
+      const origin = window.location.origin;
+      console.log('Current origin:', origin);
+      const baseUrl = `${origin}${config.api.baseUrl}`;
+      console.log('Constructed API base URL:', baseUrl);
+      return baseUrl;
     }
   }
   // In server environments, use the config value
@@ -26,12 +30,17 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  // Increase timeout for mobile networks
+  timeout: 60000, // 60 seconds
 });
 
 // Add request interceptor for debugging
 api.interceptors.request.use(
   (config) => {
     debug.network.request(config.url || '', config.method || 'unknown', config.data);
+    // Log full request URL for debugging
+    const fullUrl = `${config.baseURL}${config.url}`;
+    console.log(`Making request to: ${fullUrl}`);
     return config;
   },
   (error) => {
@@ -52,6 +61,17 @@ api.interceptors.response.use(
   },
   (error) => {
     debug.network.error(error.config?.url || 'unknown', error);
+    // Log more details for mobile debugging
+    if (axios.isAxiosError(error)) {
+      console.error('Request failed:', {
+        url: error.config?.url,
+        method: error.config?.method,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        message: error.message,
+        data: error.response?.data,
+      });
+    }
     return Promise.reject(error);
   }
 );
@@ -65,6 +85,10 @@ export async function estimateCalories(base64Image: string): Promise<CalorieEsti
   try {
     debug.log('Preparing calorie estimation request');
     debug.log(`Using API base URL: ${apiBaseUrl}`);
+    
+    // Trim the base64 image if it's very large to log it safely
+    const logLength = Math.min(base64Image.length, 100);
+    console.log(`Image data length: ${base64Image.length}, preview: ${base64Image.substring(0, logLength)}...`);
     
     const requestData: CalorieEstimationRequest = {
       image: base64Image,
@@ -96,6 +120,14 @@ export async function estimateCalories(base64Image: string): Promise<CalorieEsti
     if (axios.isAxiosError(error)) {
       const statusCode = error.response?.status || 500;
       const errorMessage = error.response?.data?.error || error.message || 'Network error';
+      
+      // Provide more helpful error message for common issues
+      if (error.code === 'ECONNABORTED') {
+        throw new ApiError('The request timed out. Please check your internet connection and try again.', 408);
+      } else if (!error.response) {
+        throw new ApiError('Could not connect to the server. Please check your internet connection and try again.', 0);
+      }
+      
       throw new ApiError(errorMessage, statusCode);
     }
     throw error;

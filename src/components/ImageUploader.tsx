@@ -14,13 +14,22 @@ export function ImageUploader({ onImageCapture, isLoading = false }: ImageUpload
 
   const handleImageSelect = async (file: File) => {
     try {
+      // Log file information for debugging
+      console.log('File selected:', file.name, file.type, file.size);
+      
+      // For smaller files, compress less to maintain quality
+      const quality = file.size < 500000 ? 0.9 : 0.8;
+      
       // Compress image before uploading
-      const compressedImage = await compressImage(file);
+      console.log('Compressing image...');
+      const compressedImage = await compressImage(file, 800, quality);
+      console.log('Image compressed successfully');
+      
       setPreviewUrl(compressedImage);
       onImageCapture(compressedImage);
     } catch (error) {
       console.error('Error processing image:', error);
-      alert('Error processing image. Please try again.');
+      alert('Error processing image. Please try again with a different image or camera.');
     }
   };
 
@@ -76,6 +85,7 @@ export function ImageUploader({ onImageCapture, isLoading = false }: ImageUpload
                   }
                 }}
                 className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full"
+                aria-label="Remove image"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M18 6L6 18M6 6l12 12" />
@@ -110,7 +120,7 @@ export function ImageUploader({ onImageCapture, isLoading = false }: ImageUpload
       />
 
       {!previewUrl && (
-        <div className="mt-4 flex justify-center">
+        <div className="mt-4 flex justify-center gap-4">
           <button
             onClick={handleCameraCapture}
             className="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-md flex items-center"

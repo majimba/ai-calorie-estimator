@@ -5,10 +5,17 @@
  */
 export function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
+    console.log('Converting file to base64, size:', file.size);
     const reader = new FileReader();
     reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = (error) => reject(error);
+    reader.onload = () => {
+      console.log('File converted to base64 successfully');
+      resolve(reader.result as string);
+    };
+    reader.onerror = (error) => {
+      console.error('Error converting file to base64:', error);
+      reject(error);
+    };
   });
 }
 
@@ -25,42 +32,83 @@ export function compressImage(
   quality = 0.8
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = (event) => {
-      const img = new Image();
-      img.src = event.target?.result as string;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-        
-        // Calculate new dimensions while maintaining aspect ratio
-        if (width > maxWidth) {
-          height = Math.round((height * maxWidth) / width);
-          width = maxWidth;
+    try {
+      console.log('Starting image compression, file size:', file.size);
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      
+      reader.onload = (event) => {
+        try {
+          console.log('File read successful, creating image object');
+          const img = new Image();
+          
+          img.onload = () => {
+            try {
+              console.log(`Original image dimensions: ${img.width}x${img.height}`);
+              
+              // For very small images, don't compress
+              if (img.width <= maxWidth && file.size < 300000) {
+                console.log('Image is already small enough, skipping compression');
+                resolve(event.target?.result as string);
+                return;
+              }
+              
+              const canvas = document.createElement('canvas');
+              let width = img.width;
+              let height = img.height;
+              
+              // Calculate new dimensions while maintaining aspect ratio
+              if (width > maxWidth) {
+                height = Math.round((height * maxWidth) / width);
+                width = maxWidth;
+              }
+              
+              console.log(`Resizing to: ${width}x${height}, quality: ${quality}`);
+              
+              canvas.width = width;
+              canvas.height = height;
+              
+              const ctx = canvas.getContext('2d');
+              if (!ctx) {
+                console.error('Could not get canvas context');
+                reject(new Error('Could not get canvas context'));
+                return;
+              }
+              
+              // Draw the image on the canvas
+              ctx.drawImage(img, 0, 0, width, height);
+              
+              // Convert to data URL
+              const dataUrl = canvas.toDataURL('image/jpeg', quality);
+              console.log('Compression complete, new data URL length:', dataUrl.length);
+              
+              resolve(dataUrl);
+            } catch (err) {
+              console.error('Error during canvas operations:', err);
+              reject(err);
+            }
+          };
+          
+          img.onerror = (err) => {
+            console.error('Error loading image:', err);
+            reject(new Error('Error loading image'));
+          };
+          
+          img.src = event.target?.result as string;
+        } catch (err) {
+          console.error('Error in image onload handler:', err);
+          reject(err);
         }
-        
-        canvas.width = width;
-        canvas.height = height;
-        
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          reject(new Error('Could not get canvas context'));
-          return;
-        }
-        
-        ctx.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL('image/jpeg', quality);
-        resolve(dataUrl);
       };
-      img.onerror = () => {
-        reject(new Error('Error loading image'));
+      
+      reader.onerror = (err) => {
+        console.error('Error reading file:', err);
+        reject(new Error('Error reading file'));
       };
-    };
-    reader.onerror = () => {
-      reject(new Error('Error reading file'));
-    };
+    } catch (err) {
+      console.error('Unexpected error in compressImage:', err);
+      reject(err);
+    }
   });
 }
 
@@ -70,22 +118,28 @@ export function compressImage(
  */
 export async function captureImage(): Promise<File> {
   return new Promise((resolve, reject) => {
-    // Create a file input element
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.capture = 'environment';
-    
-    input.onchange = () => {
-      const file = input.files?.[0];
-      if (file) {
-        resolve(file);
-      } else {
-        reject(new Error('No image selected'));
-      }
-    };
-    
-    // Trigger file selection
-    input.click();
+    try {
+      // Create a file input element
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.capture = 'environment';
+      
+      input.onchange = () => {
+        const file = input.files?.[0];
+        if (file) {
+          console.log('Captured image:', file.name, file.type, file.size);
+          resolve(file);
+        } else {
+          reject(new Error('No image selected'));
+        }
+      };
+      
+      // Trigger file selection
+      input.click();
+    } catch (err) {
+      console.error('Error capturing image:', err);
+      reject(err);
+    }
   });
 } 

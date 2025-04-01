@@ -24,7 +24,15 @@ export function CalorieEstimator() {
       
       if (error) {
         debug.error('Error from estimateCaloriesWithErrorHandling', error);
-        setError(error);
+        
+        // Provide more helpful error messages for mobile users
+        if (error.includes('timeout') || error.includes('Network Error')) {
+          setError('Connection problem detected. Please check your internet connection and try again. Mobile connections may be slower.');
+        } else if (error.includes('connect to the server')) {
+          setError('Could not connect to the server. This may be due to a weak mobile signal. Try again when you have a better connection.');
+        } else {
+          setError(error);
+        }
       } else if (data) {
         debug.log('Received calorie estimation result', { 
           calories: data.calories,
@@ -50,6 +58,9 @@ export function CalorieEstimator() {
     setError(null);
   };
 
+  // Check if we're on a mobile device
+  const isMobile = typeof window !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
   return (
     <div className="max-w-3xl mx-auto py-8 px-4">
       <h1 className="text-3xl font-bold text-center mb-8">AI Calorie Estimator</h1>
@@ -57,12 +68,17 @@ export function CalorieEstimator() {
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 mb-6">
           <div className="flex">
-            <svg className="h-5 w-5 text-red-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="h-5 w-5 text-red-500 mr-2 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <div>
               <p className="font-semibold">Error</p>
               <p>{error}</p>
+              {isMobile && error.includes('connection') && (
+                <p className="mt-2 text-sm">
+                  Tip: Mobile networks can be unreliable. Try using WiFi if available.
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -78,7 +94,12 @@ export function CalorieEstimator() {
           {isLoading && (
             <div className="mt-6 text-center">
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
-              <p className="mt-2 text-gray-600">Analyzing your food...</p>
+              <p className="mt-2 text-gray-600">
+                {isMobile ? 
+                  'Analyzing your food... this may take longer on mobile connections' : 
+                  'Analyzing your food...'
+                }
+              </p>
             </div>
           )}
         </div>
@@ -100,6 +121,11 @@ export function CalorieEstimator() {
         <p>
           This app uses AI to estimate calories in food images. Results are approximate.
         </p>
+        {isMobile && (
+          <p className="mt-2">
+            For best results on mobile, use WiFi and ensure good lighting when taking photos.
+          </p>
+        )}
       </div>
     </div>
   );

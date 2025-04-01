@@ -30,6 +30,17 @@ export async function POST(request: Request) {
   console.log('📱 Mobile API: Received iOS estimation request');
   console.log('📱 Mobile API: Request headers:', Object.fromEntries(request.headers.entries()));
   
+  // Check if OpenAI API key is configured
+  if (!process.env.OPENAI_API_KEY) {
+    console.error('📱 Mobile API: OPENAI_API_KEY environment variable is not set');
+    return corsHeaders(NextResponse.json({
+      success: false,
+      error: "OpenAI API key not configured on the server"
+    }, { status: 500 }));
+  }
+  
+  console.log('📱 Mobile API: OPENAI_API_KEY is set, length:', process.env.OPENAI_API_KEY.length);
+  
   // Add CORS headers to all responses including errors
   try {
     let body;
@@ -55,7 +66,7 @@ export async function POST(request: Request) {
     
     // Create a new OpenAI client for this specific request
     const openai = new OpenAI({
-      apiKey: config.openai.apiKey,
+      apiKey: process.env.OPENAI_API_KEY,
     });
     
     // Use a simple try-catch approach with no timeout dependencies

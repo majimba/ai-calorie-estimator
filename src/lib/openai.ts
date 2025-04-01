@@ -3,7 +3,7 @@ import { config } from './config';
 
 // Initialize the OpenAI client
 const openai = new OpenAI({
-  apiKey: config.openai.apiKey,
+  apiKey: process.env.OPENAI_API_KEY || '',
 });
 
 interface CalorieEstimationResult {

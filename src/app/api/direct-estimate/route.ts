@@ -58,6 +58,17 @@ export async function POST(request: Request) {
     console.log('📱 Direct API: iOS device detected');
   }
   
+  // Check if OpenAI API key is configured
+  if (!process.env.OPENAI_API_KEY) {
+    console.error('📱 Direct API: OPENAI_API_KEY environment variable is not set');
+    return corsHeaders(NextResponse.json({
+      success: false,
+      error: "OpenAI API key not configured on the server"
+    }, { status: 500 }));
+  }
+  
+  console.log('📱 Direct API: OPENAI_API_KEY is set, length:', process.env.OPENAI_API_KEY.length);
+  
   try {
     // Parse request body
     console.log('📱 Direct API: Parsing request body');

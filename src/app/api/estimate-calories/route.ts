@@ -9,6 +9,20 @@ const requestSchema = z.object({
   image: z.string().min(1, "Image is required"),
 });
 
+// Helper function to add CORS headers
+function corsHeaders(response: NextResponse) {
+  response.headers.set('Access-Control-Allow-Credentials', 'true');
+  response.headers.set('Access-Control-Allow-Origin', '*');
+  response.headers.set('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  response.headers.set('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+  return response;
+}
+
+// Handle OPTIONS request for CORS preflight
+export async function OPTIONS() {
+  return corsHeaders(NextResponse.json({}, { status: 200 }));
+}
+
 export async function POST(request: Request) {
   console.log('📝 API: Received request for calorie estimation');
   
@@ -23,10 +37,10 @@ export async function POST(request: Request) {
     const validationResult = requestSchema.safeParse(body);
     if (!validationResult.success) {
       console.error('📝 API: Validation failed:', validationResult.error.message);
-      return NextResponse.json({
+      return corsHeaders(NextResponse.json({
         success: false,
         error: "Invalid request: " + validationResult.error.message,
-      } as ApiResponse<null>, { status: 400 });
+      } as ApiResponse<null>, { status: 400 }));
     }
     
     const { image } = validationResult.data;
@@ -53,7 +67,7 @@ export async function POST(request: Request) {
           },
         };
         
-        return NextResponse.json(response);
+        return corsHeaders(NextResponse.json(response));
       } catch (openaiError) {
         console.error('📝 API: OpenAI error:', openaiError);
         throw new Error(`OpenAI error: ${openaiError instanceof Error ? openaiError.message : String(openaiError)}`);
@@ -65,9 +79,9 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('📝 API: Error processing request:', error);
     
-    return NextResponse.json({
+    return corsHeaders(NextResponse.json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error occurred',
-    } as ApiResponse<null>, { status: 500 });
+    } as ApiResponse<null>, { status: 500 }));
   }
 } 

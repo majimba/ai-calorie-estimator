@@ -4,9 +4,25 @@ import { ApiResponse, CalorieEstimation, CalorieEstimationRequest } from './type
 import { ApiError, handleApiError } from './error';
 import { debug } from './debug';
 
+// Get the API base URL
+const apiBaseUrl = (() => {
+  // In browser environments
+  if (typeof window !== 'undefined') {
+    const isAbsoluteUrl = config.api.baseUrl.startsWith('http');
+    if (isAbsoluteUrl) {
+      return config.api.baseUrl;
+    } else {
+      // If it's a relative URL, use the current origin
+      return `${window.location.origin}${config.api.baseUrl}`;
+    }
+  }
+  // In server environments, use the config value
+  return config.api.baseUrl;
+})();
+
 // Create API client with interceptors for debugging
 const api = axios.create({
-  baseURL: config.api.baseUrl,
+  baseURL: apiBaseUrl,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -48,6 +64,7 @@ api.interceptors.response.use(
 export async function estimateCalories(base64Image: string): Promise<CalorieEstimation> {
   try {
     debug.log('Preparing calorie estimation request');
+    debug.log(`Using API base URL: ${apiBaseUrl}`);
     
     const requestData: CalorieEstimationRequest = {
       image: base64Image,

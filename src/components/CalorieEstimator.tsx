@@ -21,18 +21,33 @@ export function CalorieEstimator() {
 
   // Check if this is a mobile device
   const isMobile = typeof window !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  const isIOS = typeof window !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
   
   // Collect network info on mount
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const connection = (navigator as any).connection;
+      let networkInfo = 'Network info not available';
+      
       if (connection) {
-        setNetworkInfo(`Network: ${connection.effectiveType || 'unknown'}, RTT: ${connection.rtt || 'unknown'}ms`);
-      } else {
-        setNetworkInfo('Network info not available');
+        networkInfo = `Network: ${connection.effectiveType || 'unknown'}, RTT: ${connection.rtt || 'unknown'}ms`;
       }
+      
+      // For iOS, add more detailed diagnostics
+      if (isIOS) {
+        // Check if we're on a webapp or standalone mode
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+        networkInfo += `, iOS${isStandalone ? ' (standalone)' : ''}`;
+        
+        // Add browser info for iOS
+        const isSafari = /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
+        const isChrome = /CriOS/.test(navigator.userAgent);
+        networkInfo += `, Browser: ${isSafari ? 'Safari' : isChrome ? 'Chrome' : 'Other'}`;
+      }
+      
+      setNetworkInfo(networkInfo);
     }
-  }, []);
+  }, [isIOS]);
 
   const handleImageCapture = async (imageData: string) => {
     try {
@@ -45,6 +60,11 @@ export function CalorieEstimator() {
       // Log the image size for debugging
       const sizeMB = (imageData.length * 0.75) / (1024 * 1024);
       console.log(`Processing image, approx size: ${sizeMB.toFixed(2)} MB`);
+      
+      // For iOS devices, show a small delay with a special message
+      if (isIOS) {
+        console.log('iOS device detected, showing enhanced loading message');
+      }
       
       console.log('Starting estimation...');
       const results = await estimateCalories(imageData);
@@ -115,9 +135,11 @@ export function CalorieEstimator() {
           <div>
             <p className="font-medium">Analyzing your food...</p>
             <p className="text-sm mt-1">
-              {isMobile ? 
-                'This may take up to 40 seconds on mobile connections.' : 
-                'This should only take a few seconds.'}
+              {isIOS ? 
+                'iOS devices may take longer. Please keep the browser open and connected to the internet.' : 
+                isMobile ? 
+                  'This may take up to 40 seconds on mobile connections.' : 
+                  'This should only take a few seconds.'}
             </p>
           </div>
         </div>

@@ -23,14 +23,20 @@ function corsHeaders(response: NextResponse) {
   response.headers.set('Access-Control-Allow-Credentials', 'true');
   response.headers.set('Access-Control-Allow-Origin', '*');
   response.headers.set('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  response.headers.set('Access-Control-Allow-Headers', '*');
+  response.headers.set('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, X-iOS-Client');
   response.headers.set('Access-Control-Max-Age', '86400'); // Cache preflight for 24 hours
+  
+  // Prevent caching issues on iOS
+  response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  response.headers.set('Pragma', 'no-cache');
+  response.headers.set('Expires', '0');
+  
   return response;
 }
 
 // Handle OPTIONS request for CORS preflight
 export async function OPTIONS() {
-  const response = new NextResponse(null, { status: 204 }); // Use 204 No Content
+  const response = new NextResponse(null, { status: 200 }); // Use 200 instead of 204 for iOS
   return corsHeaders(response);
 }
 
@@ -42,17 +48,33 @@ function timeout(ms: number) {
 }
 
 export async function POST(request: Request) {
-  console.log('📝 Direct API: Received direct estimation request');
-  console.log('📝 Direct API: Request headers:', Object.fromEntries(request.headers.entries()));
+  console.log('📱 Direct API: Received direct estimation request');
+  console.log('📱 Direct API: Request headers:', Object.fromEntries(request.headers.entries()));
+  
+  const isIOSRequest = request.headers.get('user-agent')?.includes('iPhone') || 
+                       request.headers.get('user-agent')?.includes('iPad');
+                     
+  if (isIOSRequest) {
+    console.log('📱 Direct API: iOS device detected');
+  }
   
   try {
     // Parse request body
-    console.log('📝 Direct API: Parsing request body');
+    console.log('📱 Direct API: Parsing request body');
     let body;
     try {
       body = await request.json();
     } catch (parseError) {
-      console.error('📝 Direct API: Error parsing JSON request body:', parseError);
+      console.error('📱 Direct API: Error parsing JSON request body:', parseError);
+      
+      // Special handling for iOS parse errors (often caused by connectivity issues)
+      if (isIOSRequest) {
+        return corsHeaders(NextResponse.json({
+          success: false,
+          error: "Unable to read image data from your iOS device. Try using WiFi, check your browser privacy settings, or try a different browser like Safari.",
+        } as ApiResponse<null>, { status: 400 }));
+      }
+      
       return corsHeaders(NextResponse.json({
         success: false,
         error: "Invalid JSON in request body. Make sure the Content-Type is application/json.",
@@ -90,8 +112,6 @@ export async function POST(request: Request) {
       console.log('📝 Direct API: Sending image directly to OpenAI');
       
       // iOS/Safari needs reliable timeouts so use a longer one
-      const isIOSRequest = request.headers.get('user-agent')?.includes('iPhone') || 
-                          request.headers.get('user-agent')?.includes('iPad');
       const isMobileRequest = isIOSRequest || 
                           request.headers.get('user-agent')?.includes('Android');
       const timeoutMs = isIOSRequest ? 150000 : 
@@ -115,7 +135,15 @@ export async function POST(request: Request) {
       } as ApiResponse<null>, { status: 408 }));
     }
   } catch (error) {
-    console.error('📝 Direct API: Error processing request:', error);
+    console.error('📱 Direct API: Error processing request:', error);
+    
+    // Better iOS-specific error message
+    if (isIOSRequest) {
+      return corsHeaders(NextResponse.json({
+        success: false,
+        error: "Network connectivity issue from your iOS device. Please try switching to WiFi, disabling any content blockers, or using Safari if you're currently using another browser.",
+      } as ApiResponse<null>, { status: 500 }));
+    }
     
     return corsHeaders(NextResponse.json({
       success: false,

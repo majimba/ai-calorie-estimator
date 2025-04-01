@@ -42,10 +42,15 @@ const api = axios.create({
     'Content-Type': 'application/json',
     // iOS Safari needs explicitly set Accept header
     'Accept': 'application/json, text/plain, */*',
+    // Add iOS specific header to help with identification
+    ...(isIOS ? { 'X-iOS-Client': 'true' } : {})
   },
   // Increase timeout for mobile networks - iOS devices may need even longer
   timeout: isIOS ? 120000 : 90000, // 120 seconds for iOS, 90 for others
-  // withCredentials: false, // Explicitly disable credentials for CORS
+  // Explicitly handle CORS for iOS
+  withCredentials: false,
+  // Important for iOS: Don't cache requests
+  params: isIOS ? { _: Date.now() } : {}
 });
 
 // Add request interceptor for debugging
@@ -115,17 +120,22 @@ export async function estimateCalories(base64Image: string): Promise<CalorieEsti
       if (isIOS) {
         try {
           console.log("iOS device detected, using dedicated mobile endpoint...");
+          // Add a random query parameter to avoid caching issues on iOS
+          const iOSCacheBuster = Date.now();
           const response = await api.post<ApiResponse<CalorieEstimation>>(
-            '/api/mobile-estimate',
+            `/api/mobile-estimate?_=${iOSCacheBuster}`,
             { image: base64Image },
             {
               // Explicitly set headers for iOS
               headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
-                'X-iOS-Client': 'true'
+                'X-iOS-Client': 'true',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache'
               },
-              timeout: 180000 // 3 minutes
+              timeout: 180000, // 3 minutes
+              withCredentials: false // Explicitly disable for CORS
             }
           );
           
